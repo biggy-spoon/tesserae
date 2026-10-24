@@ -6,6 +6,12 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Companion's authenticated device list exposes the full Wi-Fi MAC when known,
+  allowing automatic association with an authenticated Bluetooth display even
+  when its server device ID differs. Missing or invalid MAC addresses remain null.
+
 ## [0.475.0], 2026-10-24
 
 ### Added

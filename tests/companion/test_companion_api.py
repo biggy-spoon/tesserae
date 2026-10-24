@@ -359,6 +359,36 @@ def test_devices_listing_is_contract_valid(app: Flask) -> None:
     assert isinstance(device["icon"], str) and device["icon"]
 
 
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("F8-5B-1B-4F-E8-44", "f8:5b:1b:4f:e8:44"),
+        ("f85b1b4fe844", "f8:5b:1b:4f:e8:44"),
+        (None, None),
+        ("4fe844", None),
+        ("00:00:00:00:00:00", None),
+        ("ff:ff:ff:ff:ff:ff", None),
+        ("01:02:03:04:05:06", None),
+    ],
+)
+def test_devices_exposes_complete_mac_without_device_credentials(
+    app: Flask, raw: str | None, expected: str | None
+) -> None:
+    device_id = _seed_device(app)
+    app.config["DEVICE_REGISTRY"].get(device_id).manifest["mac"] = raw
+    token = _token(app)
+    response = app.test_client().get(
+        "/api/app/v1/devices", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    _validate(body, "DevicesResponse")
+    item = next(d for d in body["devices"] if d["id"] == device_id)
+    assert item["mac"] == expected
+    assert "access_token" not in item
+    assert "token" not in item
+
+
 def test_devices_listing_reports_a_pending_rest_render_until_frame_is_served(app: Flask) -> None:
     device_id = _seed_device(app)
     manager = app.config["PUSH_MANAGER"]

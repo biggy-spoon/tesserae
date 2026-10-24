@@ -927,6 +927,21 @@ def _nullable_int(value: Any, *, lo: int | None = None, hi: int | None = None) -
     return out
 
 
+def _hardware_mac(value: Any) -> str | None:
+    """Complete Wi-Fi hardware identity for authenticated Companion association."""
+    if not isinstance(value, str):
+        return None
+    raw = value.strip().lower()
+    if not re.fullmatch(
+        r"[0-9a-f]{12}|(?:[0-9a-f]{2}:){5}[0-9a-f]{2}|(?:[0-9a-f]{2}-){5}[0-9a-f]{2}", raw
+    ):
+        return None
+    compact = raw.replace(":", "").replace("-", "")
+    if compact in {"000000000000", "ffffffffffff"} or int(compact[:2], 16) & 1:
+        return None
+    return ":".join(compact[i : i + 2] for i in range(0, 12, 2))
+
+
 def _device_view(
     device: Device,
     status: dict[str, Any] | None,
@@ -971,6 +986,7 @@ def _device_view(
 
     view = {
         "id": device.id,
+        "mac": _hardware_mac(device.manifest.get("mac")),
         "name": device.display_name,
         "kind": str(device.kind_of or ""),
         # Bare Phosphor slug, the same identity the device pickers and
