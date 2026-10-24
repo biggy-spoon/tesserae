@@ -1215,8 +1215,9 @@ def patch_dashboard_settings(dashboard_id: str) -> Any:
         return _error("invalid_request", str(exc), 400, fields=exc.fields)
     if updated is None:
         return _error("not_found", "No dashboard with that id.", 404)
-    # Existing preview caches are keyed by the whole page content; the updated
-    # page naturally produces a new preview token. Saving never calls push.
+    # Discard the web editor's unsaved preview, as its save route does too.
+    current_app.config.get("PREVIEW_CACHE", {}).pop(dashboard_id, None)
+    # Companion's content-keyed token changes with the saved page. Never push.
     return jsonify(
         settings_api.response(updated, can_edit=True, options=options, registry=registry)
     )

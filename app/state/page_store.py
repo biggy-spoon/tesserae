@@ -444,11 +444,8 @@ class PageStore:
         tmp.replace(self._path)
 
     def get(self, page_id: str) -> Page | None:
-        # Callers edit detached values, then save explicitly; no web/MCP
-        # mutation can bypass the write lock through a retained reference.
         with self._lock:
-            page = self._pages.get(page_id)
-            return page.model_copy(deep=True) if page else None
+            return self._pages.get(page_id)
 
     def list_active(self) -> list[Page]:
         """Every page that is not archived: what the pickers, the lineup
@@ -457,11 +454,11 @@ class PageStore:
         lineup members, cleanup). Defined above ``list`` so the annotation
         still names the builtin, not the method."""
         with self._lock:
-            return [p.model_copy(deep=True) for p in self._pages.values() if not p.archived]
+            return [p for p in self._pages.values() if not p.archived]
 
     def list(self) -> list[Page]:
         with self._lock:
-            return [p.model_copy(deep=True) for p in self._pages.values()]
+            return list(self._pages.values())
 
     def save(self, page: Page) -> None:
         with self._lock:

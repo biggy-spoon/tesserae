@@ -20,6 +20,12 @@ the next request without pairing again.
 
 The companion contract and examples live in
 `tests/companion/contract/app-v1.openapi.yaml` and its `Fixtures` directory.
+The vendored OpenAPI file stays unchanged. Settings additions are layered through
+`tests/companion/contract_errata.py` from `dashboard_settings.openapi.yaml`;
+those definitions and the five settings fixtures were copied from
+[`charmmmz/tesserae-companion-ios` commit `30b32d42dec5db2a318b9dccfba2fa214d7325a6`](https://github.com/charmmmz/tesserae-companion-ios/tree/30b32d42dec5db2a318b9dccfba2fa214d7325a6/Contracts).
+The existing errata tests flag additions to remove when a future re-vendor
+includes them.
 
 - `GET /api/app/v1/dashboards/{id}/settings` returns the saved settings, available
   theme/style/font options, declared inputs, per-instance `components`, permission,
@@ -31,7 +37,9 @@ The companion contract and examples live in
   choices only for a field referenced by that dashboard. It accepts `q`, `limit`
   (1–100), `offset` and `schema_revision`; `status: unavailable` is distinct from
   a successful empty result. It needs `dashboards:read`, not web-editor or MCP
-  permissions. Secret fields are never exposed by this route.
+  permissions. Secret fields are never exposed by this route. Omitting
+  `schema_revision` resolves choices against the current schema; supplying an
+  outdated revision returns `409 schema_conflict`.
 - The revision covers the entire dashboard, including advanced edits from the
   web editor or MCP. The check and write share the page store's lock. A changed
   revision returns `409 revision_conflict`; reload and review changes before
@@ -79,7 +87,7 @@ provider failures return a generic retry message without credentials or provider
 exception details. Duplicate input names appear once as a read-only field; fix the declarations in
 the web editor before editing them in Companion. Saving other settings preserves
 the original declarations. Location search, sliders, native colors and fields
-with conditional `show_if` rules remain read-only in this batch. Unknown types,
+with conditional `show_if` rules remain read-only. Unknown types,
 non-text secret fields and inputs with unresolved targets return
 `editable: false` and can be opened in the web editor. Secret fields never expose
 their choice values or labels.
@@ -88,33 +96,3 @@ Saving updates the dashboard and changes its content-keyed preview cache token;
 it does not push a frame. Companion can request the refreshed preview and invoke
 the existing explicit Push action afterward. No firmware changes are needed for
 this settings API.
-
-## Batch A validation
-
-On 2026-10-23, unbound Grid, Canvas and Code-source dashboard copies passed
-save/readback, per-instance isolation and PNG rendering. Coverage included
-reminder-list selection, ordered media players, numeric/text/presentation
-options, Health sources and structured RSS source options. Shared declarations
-were validated on separate Album Art (three targets) and Emby (four targets)
-copies. They replaced duplicate controls and applied the selected order to each
-declared target; production declarations were not changed.
-
-The live API passed permission denial, atomic invalid-edit rejection,
-page/schema conflicts, optional clear and default reset. Manual iPhone
-acceptance confirmed list selection, player reorder, Save and reopen; GET and
-direct disk readback matched, with other components unchanged. A real
-Swift-to-NAS copy also passed PATCH/GET, restore PATCH/GET and isolation.
-Test copies were removed, temporary credentials revoked and existing documents,
-bindings and pairing scopes retained. No physical frame was pushed. The
-physical XCTest runner exited 74 during bootstrap before any test body; phone
-acceptance is manual.
-
-Companion, page-route and template-export regression tests passed (558 tests),
-with Ruff/format and mypy checks passing on the changed files.
-
-The test deployment uses a backed-up five-file patch in the current container's
-writable layer. It survives restart but is lost on image update or recreation.
-Rollback was verified against original, patched and partially applied states;
-unknown concurrent changes are rejected before writing. Private deployment
-locations and household evidence remain in the operator's local records.
-Publishing source changes does not publish an image or release tag.

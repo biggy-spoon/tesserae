@@ -33,9 +33,9 @@ class InvalidSettings(ValueError):
 
 
 def appearance_options() -> dict[str, list[dict[str, Any]]]:
-    from app.panels_routes import _appearance
+    from app.panels_routes import appearance_options as panel_appearance_options
 
-    raw = _appearance()
+    raw = panel_appearance_options()
     return {
         group: [
             {

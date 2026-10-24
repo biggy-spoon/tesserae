@@ -187,6 +187,11 @@ def test_partial_save_preserves_layout_and_changes_preview(app: Flask, canvas: b
     if not canvas:
         assert detail["inputs"] == []
     _seed_device(app)
+    cached_preview = object()
+    app.config["PREVIEW_CACHE"] = {"pantry": cached_preview, "other": cached_preview}
+    rejected = c.patch(URL, headers=h, json={"revision": "stale", "settings": {"name": "No"}})
+    assert rejected.status_code == 409
+    assert app.config["PREVIEW_CACHE"]["pantry"] is cached_preview
     result = c.patch(
         URL,
         headers=h,
@@ -201,6 +206,8 @@ def test_partial_save_preserves_layout_and_changes_preview(app: Flask, canvas: b
         },
     )
     assert result.status_code == 200, result.get_json()
+    assert "pantry" not in app.config["PREVIEW_CACHE"]
+    assert app.config["PREVIEW_CACHE"]["other"] is cached_preview
     updated = app.config["PAGE_STORE"].get("pantry")
     after = updated.model_dump(mode="json")
     for field in ("canvas", "cells", "custom_css", "gap", "icon", "theme", "style", "font"):
@@ -350,15 +357,19 @@ def test_two_concurrent_writers_only_one_succeeds(tmp_path: Path) -> None:
     assert sorted(outcomes) == ["conflict", "saved"]
 
 
-def test_store_reads_and_saves_do_not_leak_mutable_references(tmp_path: Path) -> None:
+def test_revision_transform_failure_and_response_cannot_mutate_saved_page(tmp_path: Path) -> None:
     store = PageStore(tmp_path / "pages.json")
     original = Page(id="a", name="A", device_ids=["screen"])
     store.save(original)
-    original.name = "Mutated after save"
-    revision = page_revision(store.get("a"))
-    for retrieved in (store.get("a"), store.list()[0], store.list_active()[0]):
-        retrieved.device_ids.append("not-saved")
-        retrieved.name = "Not saved"
+    revision = page_revision(original)
+
+    def reject(page: Page) -> Page:
+        page.device_ids.append("not-saved")
+        page.name = "Not saved"
+        raise ValueError("Rejected")
+
+    with pytest.raises(ValueError, match="Rejected"):
+        store.update_if_revision("a", revision, reject)
     assert store.get("a").name == "A"
     assert store.get("a").device_ids == ["screen"]
     result = store.update_if_revision("a", revision, lambda p: p.model_copy(update={"name": "B"}))
