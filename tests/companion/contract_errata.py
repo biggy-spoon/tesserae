@@ -31,7 +31,10 @@ against it at all.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 
 @dataclass(frozen=True)
@@ -87,19 +90,22 @@ ERRATA: tuple[Erratum, ...] = (
     ),
 )
 
+_DEVICE_LOOKUP = yaml.safe_load(
+    Path(__file__).with_name("device_lookup.openapi.yaml").read_text(encoding="utf-8")
+)
+
 SCHEMA_ERRATA: tuple[SchemaErratum, ...] = (
     SchemaErratum(
-        pointer="components/schemas/Device/properties",
-        patch={
-            "mac": {
-                "description": "Complete Wi-Fi MAC used to associate authenticated Bluetooth records.",
-                "type": "string",
-                "nullable": True,
-                "pattern": "^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$",
-            }
-        },
+        pointer="paths",
+        patch=_DEVICE_LOOKUP["paths"],
         since="vNext (unreleased)",
-        why="Expose complete hardware identity to associate authenticated Bluetooth records without relying on device ID suffixes.",
+        why="Resolve only a MAC the caller already knows, without enumerating hardware credentials.",
+    ),
+    SchemaErratum(
+        pointer="components/schemas",
+        patch=_DEVICE_LOOKUP["schemas"],
+        since="vNext (unreleased)",
+        why="Request and minimal ID-only response shared with the iOS known-MAC lookup contract.",
     ),
     SchemaErratum(
         pointer="components/schemas/Panel/properties",

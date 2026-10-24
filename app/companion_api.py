@@ -927,21 +927,6 @@ def _nullable_int(value: Any, *, lo: int | None = None, hi: int | None = None) -
     return out
 
 
-def _hardware_mac(value: Any) -> str | None:
-    """Complete Wi-Fi hardware identity for authenticated Companion association."""
-    if not isinstance(value, str):
-        return None
-    raw = value.strip().lower()
-    if not re.fullmatch(
-        r"[0-9a-f]{12}|(?:[0-9a-f]{2}:){5}[0-9a-f]{2}|(?:[0-9a-f]{2}-){5}[0-9a-f]{2}", raw
-    ):
-        return None
-    compact = raw.replace(":", "").replace("-", "")
-    if compact in {"000000000000", "ffffffffffff"} or int(compact[:2], 16) & 1:
-        return None
-    return ":".join(compact[i : i + 2] for i in range(0, 12, 2))
-
-
 def _device_view(
     device: Device,
     status: dict[str, Any] | None,
@@ -986,7 +971,6 @@ def _device_view(
 
     view = {
         "id": device.id,
-        "mac": _hardware_mac(device.manifest.get("mac")),
         "name": device.display_name,
         "kind": str(device.kind_of or ""),
         # Bare Phosphor slug, the same identity the device pickers and
@@ -1035,6 +1019,34 @@ def list_devices() -> Any:
         if d.kind_of is not None  # instances only, never built-in kinds
     ]
     return jsonify({"devices": devices})
+
+
+@bp.post("/devices/lookup")
+@_require_companion("devices:read")
+def lookup_device() -> Any:
+    """Resolve an already-known MAC without exposing device credentials.
+
+    The firmware API uses MACs as claim credentials. Never enumerate them in
+    Companion responses. This is a read-only lookup, not a discover/claim call.
+    """
+    from app.device_service import usable_mac
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or set(body) != {"mac"}:
+        return _error("invalid_request", "Supply a known device MAC.", 400)
+    mac = usable_mac(body["mac"])
+    if mac is None:
+        return _error("invalid_request", "Supply a known device MAC.", 400)
+    target = mac.lower().replace(":", "").replace("-", "")
+    matches = [
+        device.id
+        for device in _devices().all()
+        if device.kind_of is not None
+        and (stored := usable_mac(device.manifest.get("mac"))) is not None
+        and stored.lower().replace(":", "").replace("-", "") == target
+    ]
+    # Duplicate registry identities cannot establish an association either.
+    return jsonify({"device_id": matches[0] if len(matches) == 1 else None})
 
 
 # -- device timeline -----------------------------------------------------

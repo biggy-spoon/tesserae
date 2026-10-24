@@ -8,9 +8,10 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ### Added
 
-- Companion's authenticated device list exposes the full Wi-Fi MAC when known,
-  allowing automatic association with an authenticated Bluetooth display even
-  when its server device ID differs. Missing or invalid MAC addresses remain null.
+- Companion can resolve a MAC already obtained from an authenticated Bluetooth
+  display via `POST /api/app/v1/devices/lookup` (`devices:read`). It returns only
+  the unique matching device ID or null, without exposing MACs or firmware
+  credentials, claiming a device, or changing its state.
 
 ## [0.475.0], 2026-10-24
 
