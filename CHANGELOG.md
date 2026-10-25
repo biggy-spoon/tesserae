@@ -6,6 +6,15 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.478.0], 2026-10-26
+
+### Added
+
+- M5Stack PaperS3 displays have the Touch input and Touch linger options, for
+  firmware 1.57.0 and later. Touch needs Stay awake on, since the touch
+  controller cannot wake the board from deep sleep, and its axis mapping is
+  not yet checked on hardware.
+
 ### Fixed
 
 - Polish widgets use natural count forms for events, stops, hours, weeks,
