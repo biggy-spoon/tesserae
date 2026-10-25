@@ -11,6 +11,6 @@
   "era_industrial": "工业时代",
   "era_modern": "现代",
   "on_this_day": "历史上的今天",
-  "on": "于",
+  "on": "于 {date}",
   "nothing_recorded": "暂无记录。"
 }

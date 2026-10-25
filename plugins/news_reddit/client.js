@@ -24,7 +24,7 @@ function fmtAgo(epochSec, t) {
   if (secs < 60) return t("now", "now");
   if (secs < 3600) return `${Math.floor(secs / 60)}${t("minutes_abbr", "m")}`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}${t("hours_abbr", "h")}`;
-  if (secs < 604800) return `${Math.floor(secs / 86400)}${t("days_abbr", "d")}`;
+  if (secs < 604800) return `${Math.floor(secs / 86400)} ${t("days_abbr", "d")}`;
   return `${Math.floor(secs / 604800)}${t("weeks_abbr", "w")}`;
 }
 

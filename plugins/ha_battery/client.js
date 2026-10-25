@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // ha_battery, Spectra list archetype. One zebra row per battery,
 // each leading with a device-type Phosphor glyph (phone / watch /
 // keyboard / mouse / remote / vacuum / sensor / camera / tracker by
@@ -94,7 +96,7 @@ function statusPill(item, t) {
 
 export default function render(shadow, ctx) {
   const data = ctx?.data ?? {};
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const css = `<link rel="stylesheet" href="/static/style/spectra-widgets.css">`;
 
   if (data.error) {
@@ -116,9 +118,9 @@ export default function render(shadow, ctx) {
 
   let meta = "";
   if (summary.critical > 0) {
-    meta = `<span class="w-title-meta" style="color:var(--accent-1)">${summary.critical} ${escapeHtml(t("critical", "CRITICAL"))}</span>`;
+    meta = `<span class="w-title-meta" style="color:var(--accent-1)">${summary.critical} ${escapeHtml(t("critical", "CRITICAL", summary.critical))}</span>`;
   } else if (summary.low > 0) {
-    meta = `<span class="w-title-meta" style="color:var(--accent-2)">${summary.low} ${escapeHtml(t("low", "LOW"))}</span>`;
+    meta = `<span class="w-title-meta" style="color:var(--accent-2)">${summary.low} ${escapeHtml(t("low", "LOW", summary.low))}</span>`;
   } else if (summary.shown != null && summary.count != null) {
     meta = `<span class="w-title-meta">${summary.shown}/${summary.count}</span>`;
   }

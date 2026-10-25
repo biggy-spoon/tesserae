@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // device_battery, Spectra battery-strip archetype.
 //
 // One row per device: name, percent number, a horizontal fill bar
@@ -27,7 +29,8 @@ function fmtAgo(seconds, t) {
   if (seconds < 60) return t("just_now", "just now");
   if (seconds < 3600) return t("minutes_ago", "{n}m ago").replace("{n}", String(Math.floor(seconds / 60)));
   if (seconds < 86400) return t("hours_ago", "{n}h ago").replace("{n}", String(Math.floor(seconds / 3600)));
-  return t("days_ago", "{n}d ago").replace("{n}", String(Math.floor(seconds / 86400)));
+  const days = Math.floor(seconds / 86400);
+  return t("days_ago", "{n}d ago", days).replace("{n}", String(days));
 }
 
 // Whole "days to empty" phrase. Counts are always 2 or more by the
@@ -44,7 +47,7 @@ function fmtDays(d, t) {
 
 export default function render(shadow, ctx) {
   const data = ctx?.data ?? {};
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const css = '<link rel="stylesheet" href="/static/style/spectra-widgets.css">';
 
   const devices = Array.isArray(data.devices) ? data.devices : [];

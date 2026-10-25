@@ -6,6 +6,13 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Polish widgets use natural count forms for events, stops, hours, weeks,
+  automation runs and degrees. The word clock uses phrases such as "Pięć po
+  trzeciej" and "Wpół do czwartej", and Polish labels and date headings use
+  more natural wording. Longer clock and automation labels fit small tiles.
+
 ## [0.477.0], 2026-10-25
 
 ### Added

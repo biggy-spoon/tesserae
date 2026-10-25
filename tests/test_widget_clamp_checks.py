@@ -27,7 +27,10 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CHECKS = sorted(REPO_ROOT.glob("plugins/*/tests/clamp_check.mjs"))
+CHECKS = [
+    *sorted(REPO_ROOT.glob("plugins/*/tests/clamp_check.mjs")),
+    REPO_ROOT / "tests/widget_i18n_check.mjs",
+]
 
 
 def _node() -> str | None:
@@ -44,7 +47,11 @@ def test_every_clamp_check_is_discovered() -> None:
     assert CHECKS, "no plugins/*/tests/clamp_check.mjs found — has the layout moved?"
 
 
-@pytest.mark.parametrize("script", CHECKS, ids=lambda p: p.parent.parent.name)
+@pytest.mark.parametrize(
+    "script",
+    CHECKS,
+    ids=lambda p: p.parent.parent.name if p.name == "clamp_check.mjs" else p.stem,
+)
 def test_clamp_check_passes(script: Path) -> None:
     node = _node()
     if node is None:

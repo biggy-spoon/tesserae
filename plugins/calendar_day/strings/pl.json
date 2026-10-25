@@ -1,7 +1,9 @@
 {
-  "no_events": "Brak wydarzeń dziś.",
+  "no_events": "Brak wydarzeń na dziś.",
   "event": "wydarzenie",
   "events": "wydarzeń",
   "at": "o",
-  "n_events": "{n} wydarzeń"
+  "n_events": "{n} wydarzeń",
+  "events_few": "wydarzenia",
+  "n_events_few": "{n} wydarzenia"
 }

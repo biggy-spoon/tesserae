@@ -11,6 +11,6 @@
   "era_industrial": "Priemyselná",
   "era_modern": "Moderná",
   "on_this_day": "V tento deň",
-  "on": "Dňa",
+  "on": "Dňa {date}",
   "nothing_recorded": "Žiadne záznamy."
 }

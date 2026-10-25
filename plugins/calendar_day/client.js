@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // calendar_day, Spectra timetable. Big display header (WEEKDAY +
 // day number, with the month/year as right-aligned meta + a thin
 // accent rule), sparse 2-hour axis, events as positioned blocks
@@ -352,10 +354,8 @@ function hourLabels(range) {
 // by how many events overlap that hour. 0 events = empty surface-
 // sunken; 1+ events scale through accent-4 (teal) at increasing
 // opacity. Quick scan of "where the day is busy". Half-open intervals
-// [hour, hour+1). ``t`` is ctx.t(): the hover tooltip is the one piece
-// of this widget's text that needs a plural, and ctx.t() has no
-// interpolation of its own, so the sentence is composed here from
-// three translated atoms (singular noun / plural noun / "at").
+// [hour, hour+1). Compose the tooltip from translated atoms; the noun
+// follows the locale's plural rules, including Polish's "few" form.
 function densityStrip(range, timed, t) {
   const cells = [];
   const maxCount = Math.max(
@@ -382,7 +382,7 @@ function densityStrip(range, timed, t) {
     const bg = count === 0
       ? "var(--surface-sunken)"
       : `color-mix(in oklab, var(--accent-4) ${(alpha * 100).toFixed(0)}%, var(--surface))`;
-    const noun = t(count === 1 ? "event" : "events", count === 1 ? "event" : "events");
+    const noun = count === 1 ? t("event", "event") : t("events", "events", count);
     cells.push(
       `<span class="tt-density-cell" style="background:${bg}" title="${count} ${noun} ${t("at", "at")} ${String(h).padStart(2, "0")}:00"></span>`
     );
@@ -392,7 +392,7 @@ function densityStrip(range, timed, t) {
 
 export default function render(shadow, ctx) {
   const data = ctx?.data ?? {};
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const css = `<link rel="stylesheet" href="/static/style/spectra-widgets.css">`;
 
   if (data.error) {
@@ -475,7 +475,8 @@ export default function render(shadow, ctx) {
     const first = placed[cw.members[0]].ev;
     const colour = first.colour || "var(--accent-4)";
     const tint = `color-mix(in oklab, ${colour} 18%, var(--surface))`;
-    const label = t("n_events", "{n} events").replace("{n}", String(cw.members.length));
+    const template = t("n_events", "{n} events", cw.members.length);
+    const label = template.replace("{n}", String(cw.members.length));
     return `
       <div class="tt-event tt-crowd" style="top:${top.toFixed(2)}%;height:${height.toFixed(2)}%;border-left-color:${colour};--tt-bg:${tint}" title="${escapeHtml(names.join(" · "))}">
         <span class="tt-name">${escapeHtml(label)}</span>

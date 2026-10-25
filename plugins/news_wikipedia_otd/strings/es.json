@@ -11,6 +11,6 @@
   "era_industrial": "Industrial",
   "era_modern": "Moderna",
   "on_this_day": "Un día como hoy",
-  "on": "El",
+  "on": "El {date}",
   "nothing_recorded": "Sin registros."
 }

@@ -60,7 +60,7 @@ function escapeHtml(s) {
   }[c]));
 }
 
-function spelledTime(date, t) {
+export function spelledTime(date, t) {
   const h = date.getHours() % 12;
   const m = date.getMinutes();
   const step = Math.floor(m / 5) * 5;
@@ -68,6 +68,7 @@ function spelledTime(date, t) {
   const hourIdx = isTo ? (h + 1) % 12 : h;
   const template = stepTemplates(t)[step] || "{hour}";
   const words = hourWords(t);
+  const genitive = hourWords((key, fallback) => t(`${key}_genitive`, t(key, fallback)));
   const hour = words[hourIdx];
   // Templates may also use {this} (the hour just gone) and {next}
   // (the hour to come) regardless of the step: languages that tell
@@ -83,6 +84,8 @@ function spelledTime(date, t) {
     .replace("{hour}", hour)
     .replace("{this}", thisHour)
     .replace("{next}", nextHour)
+    .replace("{this_genitive}", genitive[h])
+    .replace("{next_genitive}", genitive[(h + 1) % 12])
     .trim();
   return sentence ? sentence.charAt(0).toUpperCase() + sentence.slice(1) : "";
 }
@@ -158,6 +161,9 @@ export default function render(shadow, ctx) {
       background: ${phase.accent};
       vertical-align: .15em;
       margin-left: .15em;
+    }
+    @container (max-width: 260px) {
+      .word-hero { font-size: 1.5em; overflow-wrap: anywhere; }
     }
   `;
 

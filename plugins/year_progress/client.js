@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // year_progress, Spectra stat archetype. A calm "how far through"
 // hero, with two modes:
 //
@@ -97,7 +99,7 @@ function formatInt(n, locale) {
 
 export default function render(shadow, ctx) {
   const opts = ctx?.cell?.options || {};
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const locale = ctx?.locale || "en";
   const mode = opts.mode === "life-weeks" ? "life-weeks" : "year";
   const accent = ACCENTS[opts.accent] || ACCENTS.terracotta;
@@ -154,9 +156,9 @@ export default function render(shadow, ctx) {
       .replace("{n}", String(fullYearsLived + 1))
       .replace("{total}", String(lifeYears));
     const weeksToGo = totalWeeks - pastWeeks;
-    metaLeft = (pastWeeks === 1 ? t("week_lived", "{n} week lived") : t("weeks_lived", "{n} weeks lived"))
+    metaLeft = (pastWeeks === 1 ? t("week_lived", "{n} week lived") : t("weeks_lived", "{n} weeks lived", pastWeeks))
       .replace("{n}", formatInt(pastWeeks, locale));
-    metaRight = (weeksToGo === 1 ? t("week_to_go", "{n} week to go") : t("weeks_to_go", "{n} weeks to go"))
+    metaRight = (weeksToGo === 1 ? t("week_to_go", "{n} week to go") : t("weeks_to_go", "{n} weeks to go", weeksToGo))
       .replace("{n}", formatInt(weeksToGo, locale));
   }
 

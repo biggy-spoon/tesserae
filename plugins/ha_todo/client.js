@@ -31,10 +31,10 @@ function dueProximity(iso, t, locale) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
-  if (days < 0) return { key: "overdue", days, color: "var(--accent-1)", label: days === -1 ? t("yesterday", "yesterday") : `${-days}${t("day_abbr", "d")} ${t("late", "late")}` };
+  if (days < 0) return { key: "overdue", days, color: "var(--accent-1)", label: days === -1 ? t("yesterday", "yesterday") : `${-days} ${t("day_abbr", "d")} ${t("late", "late")}` };
   if (days === 0) return { key: "today", days, color: "var(--accent-2)", label: t("today", "today") };
   if (days === 1) return { key: "tomorrow", days, color: "var(--accent-3)", label: t("tomorrow", "tomorrow") };
-  if (days <= 7) return { key: "soon", days, color: "var(--accent-5)", label: `${days}${t("day_abbr", "d")}` };
+  if (days <= 7) return { key: "soon", days, color: "var(--accent-5)", label: `${days} ${t("day_abbr", "d")}` };
   return { key: "later", days, color: "var(--text-muted)", label: formatLater(d, locale) };
 }
 

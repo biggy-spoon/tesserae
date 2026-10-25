@@ -31,8 +31,8 @@ export default [
     },
   },
   {
-    // The two frontend entry points that genuinely use import/export.
-    files: ["static/spectra-chart.js", "static/pages/json-highlight.js"],
+    // Frontend modules that use import/export.
+    files: ["static/spectra-chart.js", "static/pages/json-highlight.js", "static/widget-i18n.js"],
     languageOptions: {
       sourceType: "module",
     },

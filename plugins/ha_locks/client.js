@@ -33,7 +33,7 @@ function unsecuredFor(iso, t) {
   if (secs < 60) return t("just_now", "just now");
   if (secs < 3600) return `${Math.floor(secs / 60)}${t("minutes_abbr", "m")}`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}${t("hours_abbr", "h")}`;
-  return `${Math.floor(secs / 86400)}${t("days_abbr", "d")}`;
+  return `${Math.floor(secs / 86400)} ${t("days_abbr", "d")}`;
 }
 
 // server.py's ``state`` is a closed vocabulary (locked / unlocked /

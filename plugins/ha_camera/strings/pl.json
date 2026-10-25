@@ -2,10 +2,11 @@
   "just_now": "przed chwilą",
   "minutes_ago": "{n} min temu",
   "hours_ago": "{n} h temu",
-  "days_ago": "{n} d temu",
+  "days_ago": "{n} dni temu",
   "motion": "ruch",
   "motion_upper": "RUCH",
   "camera": "Kamera",
   "no_signal": "brak sygnału",
-  "cameras": "Kamery"
+  "cameras": "Kamery",
+  "days_ago_one": "{n} dzień temu"
 }

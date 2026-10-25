@@ -11,6 +11,6 @@
   "era_industrial": "Industrialismen",
   "era_modern": "Modern tid",
   "on_this_day": "Denna dag",
-  "on": "Den",
+  "on": "Den {date}",
   "nothing_recorded": "Inget noterat."
 }

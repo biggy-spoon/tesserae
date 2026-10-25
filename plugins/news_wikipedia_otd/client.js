@@ -128,7 +128,7 @@ export default function render(shadow, ctx) {
   const kind = data.kind || "events";
   const dateLabel = localizeDate(data.date, locale);
   const kindLabel = kindLabelFor(kind, t);
-  const onDate = `${escapeHtml(t("on", "On"))} ${escapeHtml(dateLabel)}`;
+  const onDate = escapeHtml(t("on", "On {date}").replace("{date}", dateLabel));
   const accent = KIND_ACCENT[kind] || "var(--accent-5)";
 
   if (items.length === 0) {

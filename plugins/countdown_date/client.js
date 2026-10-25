@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // countdown_date, Spectra stat archetype. A glanceable "N days until X"
 // hero. Pure client-side: takes a target date from cell options and
 // computes the delta against the panel's clock. Size-tiered:
@@ -64,18 +66,19 @@ function formatBigNumber(n, locale) {
 // "days to go" / "hours ago" style suffix. The unit noun and the
 // surrounding phrase are separate strings so a locale can inflect the
 // noun and reorder the phrase independently.
-function suffixFor(unit, value, isPast, t) {
+export function suffixFor(unit, value, isPast, t) {
   const one = Math.abs(value) === 1;
   const noun = unit === "hour"
-    ? (one ? t("hour", "hour") : t("hours", "hours"))
+    ? (one ? t("hour", "hour") : t("hours", "hours", Math.abs(value)))
     : (one ? t("day", "day") : t("days", "days"));
   const phrase = isPast ? t("unit_ago", "{unit} ago") : t("unit_to_go", "{unit} to go");
-  return phrase.replace("{unit}", noun);
+  const inflected = isPast && one ? t(`${unit}_accusative`, noun) : noun;
+  return phrase.replace("{unit}", inflected);
 }
 
 export default function render(shadow, ctx) {
   const opts = ctx?.cell?.options || {};
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const locale = ctx?.locale || "en";
   const target = parseTargetDate(opts.target_date);
   const accent = ACCENTS[opts.accent] || ACCENTS.terracotta;
