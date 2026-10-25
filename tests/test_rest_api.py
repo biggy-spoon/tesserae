@@ -14,8 +14,10 @@ from __future__ import annotations
 import json
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from flask import Flask
@@ -1510,8 +1512,10 @@ def test_status_response_carries_local_time_fields(app: Flask) -> None:
     resp = _register_via_api(client, code=code, device_id="tz_pico")
     token = resp.get_json()["device_token"]
 
-    # Heartbeat-sent IANA tz wins. Berlin in June = AEDT (CEST), UTC+2,
-    # DST active.
+    # Heartbeat-sent IANA tz wins. The expected offset is Berlin's right
+    # now: +02:00 with DST in summer, +01:00 without in winter.
+    berlin = datetime.now(ZoneInfo("Europe/Berlin"))
+    offset = int(berlin.utcoffset().total_seconds())
     resp = client.post(
         "/api/v1/device/tz_pico/status",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -1520,10 +1524,10 @@ def test_status_response_carries_local_time_fields(app: Flask) -> None:
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["tz"] == "Europe/Berlin"
-    assert body["tz_offset_seconds"] == 7200  # +02:00
-    assert body["dst_active"] is True
-    # ISO 8601 with offset suffix; +02:00 for Berlin in summer.
-    assert "+02:00" in body["local_time"]
+    assert body["tz_offset_seconds"] == offset
+    assert body["dst_active"] is bool(berlin.dst())
+    # ISO 8601 with offset suffix.
+    assert berlin.isoformat()[-6:] in body["local_time"]
 
 
 def test_status_response_falls_back_when_tz_is_invalid(app: Flask) -> None:
