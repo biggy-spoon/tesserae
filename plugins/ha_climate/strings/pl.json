@@ -7,10 +7,10 @@
   "mode_auto": "auto",
   "mode_dry": "osuszanie",
   "mode_fan_only": "wentylator",
-  "humidity_tip_target": "wilgotność {h}% (cel {t}%)",
+  "humidity_tip_target": "wilgotność {h}% (zadana {t}%)",
   "humidity_tip": "wilgotność {h}%",
-  "target": "Cel",
-  "climate": "Klimat",
+  "target": "Temp. zadana",
+  "climate": "Ogrzewanie i klimatyzacja",
   "no_entities_selected": "Nie wybrano encji.",
   "zones": "STREFY"
 }

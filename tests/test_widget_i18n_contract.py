@@ -4,8 +4,9 @@
 The per-widget ``test_*_i18n.py`` files pin the English/French pair of
 the first translated widgets, plus each widget's own server.py mirrors.
 This file is the generic half: whatever set of locales a widget ships,
-every ``strings/<tag>.json`` must carry exactly the English key set with
-no blank values, the manifest must match the files on disk, and every
+every ``strings/<tag>.json`` must carry the English base keys with
+no blank values, plus optional grammatical variants. The manifest must
+match the files on disk, and every
 literal ``t("key", "fallback")`` in client.js must resolve to an English
 entry whose text is the fallback. A widget that adds a locale, or a
 locale that adds a widget, is covered without touching this file.
@@ -23,7 +24,8 @@ from app.main import REPO_ROOT
 
 PLUGINS = REPO_ROOT / "plugins"
 
-_LITERAL_T_CALLS = re.compile(r'\bt\("([a-zA-Z0-9_]+)",\s*"([^"]*)"\)')
+_LITERAL_T_CALLS = re.compile(r'\bt\("([a-zA-Z0-9_]+)",\s*"([^"]*)"(?=\s*[,\)])')
+_FORM_SUFFIXES = {"zero", "one", "two", "few", "many", "other", "genitive", "accusative"}
 
 
 def _manifest(plugin_dir: Path) -> dict:
@@ -93,9 +95,14 @@ def test_literal_t_calls_resolve_to_english_with_matching_fallback(plugin_dir: P
 def test_every_locale_carries_the_english_key_set(plugin_dir: Path, locale: str) -> None:
     en_keys = set(_strings(plugin_dir, "en"))
     loc_keys = set(_strings(plugin_dir, locale))
-    assert loc_keys == en_keys, (
+    invalid_extras = {
+        key
+        for key in loc_keys - en_keys
+        if key.rpartition("_")[2] not in _FORM_SUFFIXES or key.rpartition("_")[0] not in en_keys
+    }
+    assert en_keys <= loc_keys and not invalid_extras, (
         f"{plugin_dir.name}/{locale}: missing {sorted(en_keys - loc_keys)}, "
-        f"extra {sorted(loc_keys - en_keys)}"
+        f"invalid variants {sorted(invalid_extras)}"
     )
 
 

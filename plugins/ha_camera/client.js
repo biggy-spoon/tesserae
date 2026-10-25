@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // ha_camera, Spectra image archetype with single-camera + grid
 // rendering. Each tile carries a bottom overlay with name + state +
 // motion plus a corner timestamp chip ("just now", "2m ago") so the
@@ -29,7 +31,8 @@ function fmtAgo(iso, t) {
   if (secs < 60) return t("just_now", "just now");
   if (secs < 3600) return t("minutes_ago", "{n}m ago").replace("{n}", String(Math.floor(secs / 60)));
   if (secs < 86400) return t("hours_ago", "{n}h ago").replace("{n}", String(Math.floor(secs / 3600)));
-  return t("days_ago", "{n}d ago").replace("{n}", String(Math.floor(secs / 86400)));
+  const days = Math.floor(secs / 86400);
+  return t("days_ago", "{n}d ago", days).replace("{n}", String(days));
 }
 
 function tileImage(cam) {
@@ -62,7 +65,7 @@ function tile(cam, opts, t) {
 
 export default function render(shadow, ctx) {
   const data = ctx?.data ?? {};
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const opts = ctx?.cell?.options || {};
   const fullBleed = opts.full_bleed === true;
   const css = `<link rel="stylesheet" href="/static/style/spectra-widgets.css">`;

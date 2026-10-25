@@ -1,6 +1,10 @@
 {
-  "critical": "KRYTYCZNY",
-  "low": "NISKI",
+  "critical": "krytyczna",
+  "low": "niska",
   "batteries": "Baterie",
-  "no_batteries": "Brak baterii."
+  "no_batteries": "Brak baterii.",
+  "critical_few": "krytyczne",
+  "critical_many": "krytycznych",
+  "low_few": "niskie",
+  "low_many": "niskich"
 }

@@ -8,9 +8,9 @@
   "era_antiquity": "Starożytność",
   "era_medieval": "Średniowiecze",
   "era_renaissance": "Renesans",
-  "era_industrial": "XIX wiek",
+  "era_industrial": "Epoka przemysłowa",
   "era_modern": "Współczesność",
   "on_this_day": "Tego dnia",
-  "on": "Dnia",
-  "nothing_recorded": "Brak zapisów."
+  "on": "{date}",
+  "nothing_recorded": "Nic tego dnia nie odnotowano."
 }

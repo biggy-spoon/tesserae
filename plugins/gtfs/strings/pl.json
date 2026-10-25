@@ -16,9 +16,10 @@
   "then": "potem",
   "min": "min",
   "min_to_leave": "min do wyjścia",
-  "leave_now": "wychodź teraz",
+  "leave_now": "wyjdź teraz",
   "arriving": "nadjeżdża",
   "cancelled": "Odwołany",
   "to": "do",
-  "nothing_approaching": "Nic nie nadjeżdża"
+  "nothing_approaching": "Nic nie nadjeżdża",
+  "stops_few": "przystanki"
 }

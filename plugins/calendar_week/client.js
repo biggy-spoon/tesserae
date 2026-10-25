@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // calendar_week, Spectra timetable, seven columns. Display header
 // shows the date range ("JUN 1 → 7 · 2026"), columns show DOW + day
 // number with today picked out via an inverse accent-1 chip and
@@ -228,7 +230,7 @@ export default function render(shadow, ctx) {
   const data = ctx?.data ?? {};
   const opts = ctx?.cell?.options || {};
   const locale = ctx?.locale || "en";
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const hideLabels = opts.hide_labels === true;
   const titleScale = clampScale(opts.event_title_scale, 1.0, 0.01, 10.0);
   const locScale = clampScale(opts.event_location_scale, 1.0, 0.01, 10.0);
@@ -266,7 +268,7 @@ export default function render(shadow, ctx) {
     const isToday = !!d.is_today;
     const isWeekend = d.weekday === 5 || d.weekday === 6;
     const count = Array.isArray(d.events) ? d.events.length : 0;
-    const noun = t(count === 1 ? "event" : "events", count === 1 ? "event" : "events");
+    const noun = count === 1 ? t("event", "event") : t("events", "events", count);
     const classes = ["tt-col-head"];
     if (isToday) classes.push("is-today");
     if (isWeekend) classes.push("is-weekend");

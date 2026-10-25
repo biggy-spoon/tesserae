@@ -4,6 +4,8 @@
 // test_scale_sliders_clamp_to_bounds before the clamp moved from
 // server.py to client.js.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import render from "../client.js";
 import {
   clampScale,
   clampToDay,
@@ -153,3 +155,36 @@ assert.deepEqual(narrow.start, [null, null, null, 16], "the long one draws from 
 const two = layoutColumns([{ s: 9, e: 10 }, { s: 9, e: 10 }]);
 assert.deepEqual(planCrowds([{ s: 9, e: 10 }, { s: 9, e: 10 }], two, freeFrom([{ s: 9, e: 10 }, { s: 9, e: 10 }]), 200).crowds, [], "two events are never a crowd");
 console.log("calendar_day client checks passed");
+
+// Exercise both rendered count labels with the actual translation files.
+for (const locale of ["pl", "pl-PL", "en", "fr"]) {
+  const strings = JSON.parse(readFileSync(new URL(`../strings/${locale.split("-")[0]}.json`, import.meta.url)));
+  for (const n of [0, 1, 2, 3, 4, 5, 12, 13, 14, 21, 22, 23, 24, 25, 101, 112, 122]) {
+    const shadow = {
+      innerHTML: "",
+      host: { getBoundingClientRect: () => ({ width: 264, height: 500 }) },
+      querySelector: () => null,
+    };
+    const event = { start: "2026-01-05T09:00:00", end: "2026-01-05T10:00:00", summary: "Meeting" };
+    render(shadow, {
+      locale,
+      cell: { options: { day_start_hour: 8, day_end_hour: 14 } },
+      t: (key, fallback) => strings[key] ?? fallback ?? key,
+      data: {
+        date: "2026-01-05",
+        events: [...Array.from({ length: n }, () => event), {
+          ...event, start: "2026-01-05T11:00:00", end: "2026-01-05T12:00:00",
+        }],
+      },
+    });
+    const polishFew = n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14);
+    const noun = locale.startsWith("pl")
+      ? n === 1 ? "wydarzenie" : polishFew ? "wydarzenia" : "wydarzeń"
+      : n === 1 ? strings.event : strings.events;
+    assert.ok(shadow.innerHTML.includes(`title="${n} ${noun} ${strings.at} 09:00"`), `${locale}: tooltip for ${n}`);
+    if (n >= 3) {
+      assert.ok(shadow.innerHTML.includes(`<span class="tt-name">${n} ${noun}</span>`), `${locale}: crowd label for ${n}`);
+    }
+  }
+}
+console.log("calendar_day plural checks passed");

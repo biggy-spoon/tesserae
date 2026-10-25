@@ -1,5 +1,5 @@
 {
-  "no_samples_in_window": "Brak próbek w tym oknie.",
+  "no_samples_in_window": "Brak odczytów w tym okresie.",
   "low": "Min",
   "high": "Maks",
   "hours_abbr": "h",

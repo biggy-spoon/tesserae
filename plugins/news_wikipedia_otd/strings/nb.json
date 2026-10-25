@@ -11,6 +11,6 @@
   "era_industrial": "Industritiden",
   "era_modern": "Moderne",
   "on_this_day": "På denne dagen",
-  "on": "Den",
+  "on": "Den {date}",
   "nothing_recorded": "Ingenting registrert."
 }

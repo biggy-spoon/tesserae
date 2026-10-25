@@ -11,6 +11,6 @@
   "era_industrial": "工業時代",
   "era_modern": "現代",
   "on_this_day": "歷史上的今天",
-  "on": "於",
+  "on": "於 {date}",
   "nothing_recorded": "沒有紀錄。"
 }

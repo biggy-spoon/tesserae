@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // ha_automation_history — HA automation firing history.
 //
 // Fragment-first, ha_* family house style: paints on the shared
@@ -8,7 +10,7 @@
 
 export default function render(shadow, ctx) {
   const data = (ctx && ctx.data) || {};
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const o = (ctx.cell && ctx.cell.options) || {};
   const fragment = (ctx.cell && ctx.cell.fragment) || ctx.fragment || "full";
   const title = (o.title && o.title.trim()) || data.title || t("automations", "Automations");
@@ -24,7 +26,7 @@ export default function render(shadow, ctx) {
     if (sec < 45) return t("now", "now");
     if (sec < 3600) return Math.round(sec / 60) + t("minute_abbr", "m");
     if (sec < 86400) return Math.round(sec / 3600) + t("hour_abbr", "h");
-    return Math.round(sec / 86400) + t("day_abbr", "d");
+    return Math.round(sec / 86400) + " " + t("day_abbr", "d");
   }
   const count = (n) => (num(n) ? String(n) : "0");
 
@@ -37,10 +39,11 @@ export default function render(shadow, ctx) {
     .ah-rank .tile { flex: 1 1 0; min-width: 0; background: var(--surface-sunken);
                      border-radius: var(--radius-1); padding: var(--space-2);
                      display: flex; flex-direction: column; gap: 1px; }
-    .ah-rank .lab { display: flex; align-items: center; gap: var(--space-1);
+    .ah-rank .lab { display: block;
                     font-size: var(--fs-caption); font-weight: var(--fw-bold);
                     letter-spacing: var(--ls-label); text-transform: uppercase;
-                    color: var(--text-muted); white-space: nowrap; overflow: hidden; }
+                    color: var(--text-muted); overflow-wrap: anywhere; }
+    .ah-rank .lab i { margin-right: var(--space-1); }
     .ah-rank .most .lab i { color: var(--accent-2); }
     .ah-rank .least .lab i { color: var(--text-muted); }
     .ah-rank .nm { font-weight: var(--fw-bold); white-space: nowrap;
@@ -85,8 +88,10 @@ export default function render(shadow, ctx) {
     /* responsive trimming — the .w is a size container in spectra-widgets.css */
     @container (max-width: 460px) { .ah-totals { display: none; } }
     @container (max-width: 210px) {
+      .w { padding: var(--space-2); gap: var(--space-1); }
       .ah-recent, .w-title-meta .win { display: none; }
-      .ah-rank { flex-direction: column; }
+      .ah-rank { flex-direction: column; gap: var(--space-1); }
+      .ah-rank .tile { padding: var(--space-1); }
     }
 
     /* bar fragment */
@@ -101,6 +106,11 @@ export default function render(shadow, ctx) {
     .ah-bar .barstale { margin-left: auto; display: inline-flex; align-items: center;
                         gap: .2em; color: var(--accent-1); font-weight: var(--fw-bold);
                         font-size: clamp(.55em, 16cqmin, .95em); flex: 0 0 auto; }
+    @container (max-width: 260px) {
+      .ah-bar i.logo { display: none; }
+      .ah-bar .stat { flex: 1; flex-direction: column; align-items: flex-start; }
+      .ah-bar .stat small { font-size: .75em; }
+    }
   `;
 
   // ---- error state --------------------------------------------------------
@@ -135,7 +145,7 @@ export default function render(shadow, ctx) {
       <div class="w" data-widget="ha_automation_history">
         <div class="ah-bar">
           <i class="ph-bold ph-lightning logo"></i>
-          <span class="stat"><b>${count(data.total_24h)}</b><small>${esc(t("fired_24h", "fired · 24h"))}</small></span>
+          <span class="stat"><b>${count(data.total_24h)}</b><small>${esc(t("fired_24h", "fired · 24h", data.total_24h))}</small></span>
           <span class="sep">·</span>
           <span class="stat"><b>${count(data.total_1h)}</b><small>${esc(t("one_hour_abbr", "1h"))}</small></span>
           ${stale}
@@ -152,7 +162,7 @@ export default function render(shadow, ctx) {
       ? `<div class="tile most">
            <div class="lab"><i class="ph-bold ph-trophy"></i>${esc(t("most_fired_7d", "Most fired · 7d"))}</div>
            <div class="nm">${esc(most.name)}</div>
-           <div class="ct">${count(most.c7)} ${esc(most.c7 === 1 ? t("trigger", "trigger") : t("triggers", "triggers"))}</div>
+           <div class="ct">${count(most.c7)} ${esc(most.c7 === 1 ? t("trigger", "trigger") : t("triggers", "triggers", most.c7))}</div>
          </div>`
       : `<div class="tile most">
            <div class="lab"><i class="ph-bold ph-moon"></i>${esc(t("this_week", "This week"))}</div>
@@ -163,7 +173,7 @@ export default function render(shadow, ctx) {
       ? `<div class="tile least">
            <div class="lab"><i class="ph-bold ph-arrow-down"></i>${esc(t("least_fired_7d", "Least fired · 7d"))}</div>
            <div class="nm">${esc(least.name)}</div>
-           <div class="ct">${count(least.c7)} ${esc(least.c7 === 1 ? t("trigger", "trigger") : t("triggers", "triggers"))}</div>
+           <div class="ct">${count(least.c7)} ${esc(least.c7 === 1 ? t("trigger", "trigger") : t("triggers", "triggers", least.c7))}</div>
          </div>`
       : "");
 
@@ -203,7 +213,7 @@ export default function render(shadow, ctx) {
 
   const stale = num(data.stale_count) && data.stale_count > 0
     ? `<span class="stale"><i class="ph-bold ph-warning"></i> ${data.stale_count} ${esc(t("stale", "stale"))}</span>` : "";
-  const meta = `<span class="w-title-meta">${stale}<span class="win">${esc(data.window_days || 7)}${esc(t("day_abbr", "d"))}</span></span>`;
+  const meta = `<span class="w-title-meta">${stale}<span class="win">${esc(data.window_days || 7)} ${esc(t("day_abbr", "d"))}</span></span>`;
 
   shadow.innerHTML = `${css}<style>${layout}</style>
     <div class="w" data-widget="ha_automation_history">

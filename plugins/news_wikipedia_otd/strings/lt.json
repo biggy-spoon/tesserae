@@ -11,6 +11,6 @@
   "era_industrial": "Pramoninė",
   "era_modern": "Moderni",
   "on_this_day": "Šią dieną",
-  "on": "Šiandien",
+  "on": "Šiandien {date}",
   "nothing_recorded": "Nieko neužfiksuota."
 }

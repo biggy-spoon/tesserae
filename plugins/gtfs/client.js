@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // gtfs, approaching vehicles at one stop.
 //
 // Two archetypes, picked by cell size, because the information shape
@@ -110,7 +112,7 @@ function stopsChip(a, show, units, t) {
     const n = Number(a.stops_away);
     text = n === 0
       ? t("here", "here")
-      : `${n} ${n === 1 ? t("stop", "stop") : t("stops", "stops")}`;
+      : `${n} ${n === 1 ? t("stop", "stop") : t("stops", "stops", n)}`;
   } else if (Number.isFinite(Number(a.distance_m))) {
     text = fmtDistance(Number(a.distance_m), units);
   }
@@ -589,7 +591,7 @@ function splitBlock(arrivals, opts, perColumn) {
 }
 
 export default function render(shadow, ctx) {
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const data = ctx?.data ?? {};
   const size = ctx?.cell?.size || "md";
   const cellOpts = ctx?.cell?.options || {};

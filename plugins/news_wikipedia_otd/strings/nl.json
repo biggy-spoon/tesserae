@@ -11,6 +11,6 @@
   "era_industrial": "Industrieel",
   "era_modern": "Modern",
   "on_this_day": "Op deze dag",
-  "on": "Op",
+  "on": "Op {date}",
   "nothing_recorded": "Niets vastgelegd."
 }

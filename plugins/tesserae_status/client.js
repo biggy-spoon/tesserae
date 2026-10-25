@@ -1,3 +1,5 @@
+import { withPluralForms } from "../../static/widget-i18n.js";
+
 // tesserae_status: dashboard status strip renderer.
 //
 // Implements the converged design spec (design_handoff_status_widget/
@@ -28,7 +30,7 @@ const RED_DARK_BG = "#E0663F";
 const LUM_THRESHOLD = 0.42;
 
 export default function render(shadow, ctx) {
-  const t = ctx?.t || ((key, fallback) => fallback ?? key);
+  const t = withPluralForms(ctx?.t, ctx?.locale || "en");
   const locale = ctx?.locale || "en";
   const data = (ctx && ctx.data) || {};
   // t / locale ride on state so the update-check repaint (applyUpdateResult)
@@ -195,7 +197,7 @@ function environmentMetrics(data, t) {
       key: "temperature",
       icon: "ph-thermometer-simple",
       value: `${Math.round(temperature)}°${unit}`,
-      label: `${t("temperature", "Temperature")} ${Math.round(temperature)} ${t("degrees", "degrees")} ${unit}`,
+      label: `${t("temperature", "Temperature")} ${Math.round(temperature)} ${t("degrees", "degrees", Math.round(temperature))} ${unit}`,
     });
   }
   if (data.show_humidity && Number.isFinite(data.humidity_pct)) {

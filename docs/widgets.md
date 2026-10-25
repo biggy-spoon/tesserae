@@ -587,7 +587,21 @@ Bokmål, Polish, Portuguese, Slovak, Spanish, Swedish, and Chinese
 (Simplified `zh-CN` and Traditional `zh-TW`), chosen from where installs
 report from; a wording fix in any of them is a one-file PR against
 `plugins/<id>/strings/<tag>.json`, and `tests/test_widget_i18n_contract.py`
-keeps every translation's key set aligned with the English file.
+requires every translation to include the English base keys. A locale may
+also add grammatical variants of an existing key: the plural suffixes
+`_zero`, `_one`, `_two`, `_few`, `_many`, `_other`, or case suffixes
+`_genitive` (word clock) and `_accusative` (countdown). Variants remain
+flat string values.
+
+Widgets with count labels can import `withPluralForms` from
+`../../static/widget-i18n.js` and wrap `ctx.t` with the active locale.
+The resulting `t(key, fallback, count)` selects an optional variant using
+`Intl.PluralRules`, then falls back to the base translation. For example,
+Polish `events_few: "wydarzenia"` handles 2–4 and 22–24, while
+`events: "wydarzeń"` handles 0, 5 and 12–14. Existing singular keys
+continue to handle 1. The word clock supports `{this_genitive}` and
+`{next_genitive}` in its five-minute templates, with hour words falling
+back to their usual forms when no genitive translation is provided.
 
 To eyeball a translation without changing any settings, the dev preview
 surfaces (`/_test/widgets` and `/_test/preview`) carry a language picker;

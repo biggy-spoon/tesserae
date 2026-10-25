@@ -10,5 +10,7 @@
   "degrees": "stopni",
   "rh": "RH",
   "humidity": "Wilgotność",
-  "percent": "procent"
+  "percent": "procent",
+  "degrees_one": "stopień",
+  "degrees_few": "stopnie"
 }
