@@ -490,3 +490,62 @@ def test_duplicate_required_input_with_unset_alias_does_not_block_metadata_save(
     )
     assert saved.status_code == 200, saved.get_json()
     assert app.config["PAGE_STORE"].get("pantry").canvas == page.canvas
+
+
+def test_patch_validates_outside_the_page_store_lock(
+    app: Flask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Choice providers can reach the network, so validation must not hold
+    # the lock every page read and save in the app waits on.
+    from app import companion_dashboard_settings as settings_api
+
+    _seed(app)
+    store = app.config["PAGE_STORE"]
+    c, h = app.test_client(), _headers(app)
+    revision = _get(c, h)["revision"]
+    real = settings_api.apply_patch
+    held: list[bool] = []
+
+    def spy(*args: Any, **kwargs: Any) -> Page:
+        held.append(store._lock.locked())
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(settings_api, "apply_patch", spy)
+    result = c.patch(URL, headers=h, json={"revision": revision, "settings": {"name": "Moved"}})
+    assert result.status_code == 200, result.get_json()
+    assert held == [False]
+    assert store.get("pantry").name == "Moved"
+
+
+def test_page_saved_during_validation_is_a_conflict(
+    app: Flask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import companion_dashboard_settings as settings_api
+
+    page = _seed(app)
+    store = app.config["PAGE_STORE"]
+    c, h = app.test_client(), _headers(app)
+    revision = _get(c, h)["revision"]
+    real = settings_api.apply_patch
+
+    def racing(*args: Any, **kwargs: Any) -> Page:
+        store.save(page.model_copy(update={"custom_css": "b{}", "updated_by": "ui"}))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(settings_api, "apply_patch", racing)
+    result = c.patch(URL, headers=h, json={"revision": revision, "settings": {"name": "Lost"}})
+    assert result.status_code == 409
+    assert result.get_json()["error"]["code"] == "revision_conflict"
+    saved = store.get("pantry")
+    assert saved.name == "Pantry"
+    assert saved.custom_css == "b{}"
+
+
+@pytest.mark.parametrize(("sent", "stored"), [("ph-house", "house"), ("  ", None), (None, None)])
+def test_icon_is_stored_bare(app: Flask, sent: str | None, stored: str | None) -> None:
+    _seed(app)
+    c, h = app.test_client(), _headers(app)
+    revision = _get(c, h)["revision"]
+    result = c.patch(URL, headers=h, json={"revision": revision, "settings": {"icon": sent}})
+    assert result.status_code == 200, result.get_json()
+    assert app.config["PAGE_STORE"].get("pantry").icon == stored

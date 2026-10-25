@@ -1178,7 +1178,7 @@ def get_dashboard_settings(dashboard_id: str) -> Any:
 def patch_dashboard_settings(dashboard_id: str) -> Any:
     from app import companion_dashboard_settings as settings_api
     from app.companion_component_settings import SchemaConflict
-    from app.state.page_store import PageRevisionConflict
+    from app.state.page_store import PageRevisionConflict, page_revision
 
     body = request.get_json(silent=True)
     if (
@@ -1191,18 +1191,25 @@ def patch_dashboard_settings(dashboard_id: str) -> Any:
         return _error("invalid_request", "Supply a revision and changed settings or inputs.", 400)
     options = settings_api.appearance_options()
     registry = current_app.config.get("PLUGIN_REGISTRY")
+    store = _pages()
+    current = store.get(dashboard_id)
+    if current is None:
+        return _error("not_found", "No dashboard with that id.", 404)
     try:
-        updated = _pages().update_if_revision(
-            dashboard_id,
-            body["revision"],
-            lambda page: settings_api.apply_patch(
-                page,
-                body,
-                options=options,
-                device_ids={device.id for device in _devices().all()},
-                registry=registry,
-            ),
+        if page_revision(current) != body["revision"]:
+            raise PageRevisionConflict
+        # Validation can call widget choice providers, which may reach the
+        # network, so it runs on a copy outside the store lock. The store
+        # then swaps the result in only if the page is still at the same
+        # revision, which means it is still the page that was validated.
+        patched = settings_api.apply_patch(
+            current.model_copy(deep=True),
+            body,
+            options=options,
+            device_ids={device.id for device in _devices().all()},
+            registry=registry,
         )
+        updated = store.update_if_revision(dashboard_id, body["revision"], lambda _page: patched)
     except PageRevisionConflict:
         return _error(
             "revision_conflict", "This dashboard changed. Reload its settings before saving.", 409

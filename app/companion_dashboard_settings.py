@@ -281,6 +281,9 @@ def apply_patch(
     updates = dict(settings)
     if "name" in updates:
         updates["name"] = updates["name"].strip()
+    if "icon" in updates:
+        # model_copy skips field validators; store the name bare, as saves do.
+        updates["icon"] = Page._strip_icon_prefix(updates["icon"])
     if updated.canvas:
         appearance = {
             key: settings[key] or "" for key in ("theme", "style", "font") if key in settings
