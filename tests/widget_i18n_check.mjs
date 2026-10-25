@@ -57,12 +57,12 @@ for (const locale of ["pl", "pl-PL"]) {
     assert.equal(ranking.split(`${n} ${trigger}</div>`).length - 1, 2, `both rankings: ${n}`);
     for (const kind of ["critical", "low"]) {
       const adjective = kind === "critical"
-        ? n === 1 ? "krytyczna" : form === "few" ? "krytyczne" : "krytycznych"
-        : n === 1 ? "niska" : form === "few" ? "niskie" : "niskich";
+        ? n === 1 ? "KRYTYCZNA" : form === "few" ? "KRYTYCZNE" : "KRYTYCZNYCH"
+        : n === 1 ? "NISKA" : form === "few" ? "NISKIE" : "NISKICH";
       if (n === 0) continue;
       const batteries = await html("ha_battery", { items: [{ name: "Battery", [kind]: true }], summary: { [kind]: n } }, {}, locale);
       assert.ok(batteries.includes(`${n} ${adjective}</span>`), `${kind} summary ${n}`);
-      assert.ok(batteries.includes(kind === "critical" ? "krytyczna" : "niska"), `${kind} pill remains singular`);
+      assert.ok(batteries.includes(kind === "critical" ? "KRYTYCZNA" : "NISKA"), `${kind} pill remains singular`);
     }
     const degree = n === 1 ? "stopień" : form === "few" ? "stopnie" : "stopni";
     for (const temperature of [n, -n]) {
