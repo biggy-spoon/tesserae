@@ -112,6 +112,10 @@ ERRATA: tuple[Erratum, ...] = (
     ),
 )
 
+_DEVICE_LOOKUP = yaml.safe_load(
+    Path(__file__).with_name("device_lookup.openapi.yaml").read_text(encoding="utf-8")
+)
+
 SCHEMA_ERRATA: tuple[SchemaErratum, ...] = (
     SchemaErratum(
         pointer="paths",
@@ -130,6 +134,18 @@ SCHEMA_ERRATA: tuple[SchemaErratum, ...] = (
         patch=_DASHBOARD_SETTINGS["error_fields"],
         since="vNext (unreleased)",
         why="Safe field validation errors from the same pinned iOS contract; never echo secrets.",
+    ),
+    SchemaErratum(
+        pointer="paths",
+        patch=_DEVICE_LOOKUP["paths"],
+        since="vNext (unreleased)",
+        why="Resolve only a MAC the caller already knows, without enumerating hardware credentials.",
+    ),
+    SchemaErratum(
+        pointer="components/schemas",
+        patch=_DEVICE_LOOKUP["schemas"],
+        since="vNext (unreleased)",
+        why="Request and minimal ID-only response shared with the iOS known-MAC lookup contract.",
     ),
     SchemaErratum(
         pointer="components/schemas/Panel/properties",
