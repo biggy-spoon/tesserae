@@ -6,12 +6,23 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.476.0], 2026-10-25
+
 ### Added
 
 - Companion can resolve a MAC already obtained from an authenticated Bluetooth
   display via `POST /api/app/v1/devices/lookup` (`devices:read`). It returns only
   the unique matching device ID or null, without exposing MACs or firmware
   credentials, claiming a device, or changing its state.
+
+## [0.475.1], 2026-10-25
+
+### Changed
+
+- Dashboard update and device wake intervals are grouped under **Refresh
+  settings**, with descriptive labels, help text, and readable custom
+  controls on narrower screens. The existing dashboard layout and interval
+  behavior are unchanged.
 
 ## [0.475.0], 2026-10-24
 
