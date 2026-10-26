@@ -876,6 +876,188 @@
 .cell-card-plugin {
   font-weight: 500;
   color: var(--t-fg-soft);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A long widget name truncates instead of wrapping "Cell 1" onto two lines. */
+.cell-card-head h2 {
+  min-width: 0;
+}
+.cell-card-head h2 > span {
+  white-space: nowrap;
+}
+
+/* Cell widget picker (static/widget-picker.js): a search box that opens a
+   grouped list under the field. The list floats over the option fields
+   below it rather than pushing them down. */
+.widget-picker {
+  position: relative;
+}
+.wp-box {
+  display: flex;
+  align-items: center;
+  gap: var(--t-space-2);
+  padding: 0 var(--t-space-3);
+  border: 1px solid var(--t-border);
+  border-radius: var(--t-radius-sm);
+  background: var(--t-surface);
+  cursor: text;
+  transition: border-color var(--t-trans-fast), box-shadow var(--t-trans-fast);
+}
+.wp-box:hover {
+  border-color: var(--t-border-strong);
+}
+.wp-box.is-open,
+.wp-box:focus-within {
+  border-color: var(--t-accent);
+  box-shadow: var(--t-ring);
+}
+.wp-icon {
+  color: var(--t-fg-soft);
+  font-size: 16px;
+  flex: none;
+}
+.wp-caret {
+  color: var(--t-fg-soft);
+  flex: none;
+  cursor: pointer;
+}
+.wp-box.is-open .wp-caret {
+  color: var(--t-accent);
+}
+/* Beats the generic `.field input[type=text]` rule: the box draws the edge. */
+.field .wp-box .wp-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: var(--t-space-2) 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+.field .wp-box .wp-input:focus,
+.field .wp-box .wp-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.wp-list {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--t-surface);
+  border: 1px solid var(--t-border-strong);
+  border-radius: var(--t-radius-sm);
+  box-shadow: var(--t-shadow-lg);
+}
+.wp-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--t-space-2);
+  padding: 6px var(--t-space-3);
+  background: var(--t-surface-soft);
+  border-bottom: 1px solid var(--t-border);
+  font-family: var(--t-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--t-fg-soft);
+}
+.wp-count {
+  margin-left: auto;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--t-muted);
+  font-variant-numeric: tabular-nums;
+}
+.wp-opt {
+  display: flex;
+  align-items: center;
+  gap: var(--t-space-2);
+  padding: 6px var(--t-space-3);
+  cursor: pointer;
+  font-size: var(--t-size-sm);
+}
+.wp-opt:hover {
+  background: var(--t-surface-soft);
+}
+.wp-opt[aria-selected="true"] {
+  background: var(--t-surface-sunk);
+  box-shadow: inset 2px 0 0 var(--t-accent);
+}
+.wp-opt-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  color: var(--t-fg-soft);
+  background: var(--t-surface-sunk);
+  border-radius: var(--t-radius-sm);
+}
+.wp-opt-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wp-fam {
+  color: var(--t-muted);
+}
+.wp-item {
+  color: var(--t-fg);
+  font-weight: 600;
+}
+.wp-opt-desc {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-size-xs);
+  color: var(--t-muted);
+}
+.wp-opt-clear .wp-opt-name {
+  color: var(--t-fg-soft);
+}
+.wp-opt-tick {
+  flex: none;
+  color: var(--t-accent);
+}
+.wp-opt mark {
+  background: color-mix(in oklab, var(--t-warn) 22%, transparent);
+  color: inherit;
+  border-radius: 1px;
+}
+.wp-empty {
+  padding: var(--t-space-4) var(--t-space-3);
+  text-align: center;
+  color: var(--t-muted);
+  font-size: var(--t-size-sm);
+}
+.wp-hint {
+  position: sticky;
+  bottom: 0;
+  padding: 5px var(--t-space-3);
+  background: var(--t-surface-soft);
+  border-top: 1px solid var(--t-border);
+  font-size: var(--t-size-xs);
+  color: var(--t-muted);
+}
+@media (hover: none) {
+  .wp-hint {
+    display: none;
+  }
 }
 
 /* Drag a cell's handle onto another cell to swap the two widgets

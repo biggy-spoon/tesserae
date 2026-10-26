@@ -6,6 +6,7 @@
   "locales": ["en", "cs", "de", "es", "fr", "it", "lt", "nb", "nl", "pl", "pt", "sk", "sv", "zh-CN", "zh-TW"],
   "description": "Auto-discovered battery levels across every Home Assistant entity with device_class=battery, sorted lowest-first. Picks up phones, sensors, vacuums, remotes, anything HA already exposes as a battery, and flags low/critical against per-cell thresholds.",
   "icon": "ph-battery-low",
+  "category": "home-assistant",
   "supports": {
     "sizes": [
       "sm",

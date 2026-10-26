@@ -95,6 +95,7 @@ lowercase `[a-z0-9_]` is convention, not enforced. Name it `<family>_<role>`
   "kind": "widget",
   "description": "Current conditions...",
   "icon": "ph-cloud-sun",
+  "category": "weather",
   "supports": { "sizes": ["xs", "sm", "md", "lg"] },
   "cell_options": [
     { "name": "latitude", "type": "number", "label": "Latitude", "default": -37.8136 },
@@ -156,6 +157,16 @@ lowercase `[a-z0-9_]` is convention, not enforced. Name it `<family>_<role>`
   for `secret` reveals every sensitive value. `advanced: true` folds a
   setting into the card's "More options" section, as on cell options.
 * **`icon`**, Phosphor name used in the editor's widget picker.
+* **`name`**, shown in the widget picker. Widgets that belong to a family
+  are named `Family, Item` ("Weather, Now", "GitHub, Streak"), and the
+  picker shows the item in bold after the muted family. A widget on its own
+  gets one plain Title Case name ("Webpage"). Don't leave the name as the
+  widget's id.
+* **`category`**, the subject the widget picker groups it under, one of
+  `time`, `plans`, `weather`, `home-assistant`, `reading`, `art`, `places`,
+  `media`, `sports`, `transport`, `dev`, `finance` or `utility`. Optional:
+  without it the picker guesses from the family in the name and otherwise
+  files the widget under Utility. Older servers ignore the field.
 * **`render.needs_network`**, hint for the renderer (not enforced).
 * **`updates.on_change`**, optional data-change sources this widget knows how
   to consume. Declaring one only exposes a host-owned, per-placement **Refresh

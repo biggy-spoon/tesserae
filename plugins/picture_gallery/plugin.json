@@ -6,6 +6,7 @@
   "locales": ["en", "cs", "de", "es", "fr", "it", "lt", "nb", "nl", "pl", "pt", "sk", "sv", "zh-CN", "zh-TW"],
   "description": "Folder-based image rotation, full bleed. Manage folders + uploads at Widgets → Gallery. Supports internal folders (uploaded to the appliance) and external pointers to any directory on the host. Optional orientation filter + random or sequential rotation.",
   "icon": "ph-images",
+  "category": "art",
   "supports": {
     "sizes": [
       "sm",

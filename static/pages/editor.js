@@ -11,9 +11,9 @@
 // each persist clears the preview cache so the saved version becomes
 // authoritative again.
 //
-// The plugin <select> on a cell is still a special case, when it
-// changes we POST it immediately so the option schema can re-render
-// against the new plugin.
+// The widget picker on a cell (static/widget-picker.js) is still a special
+// case: when its hidden plugin input changes we POST it immediately so the
+// option schema can re-render against the new plugin.
 
 (function () {
   const status = document.querySelector("[data-save-status]");
@@ -671,8 +671,10 @@
     // occupy one of the preset's slots and can never be the cell that's cut.
     const cells = Array.from(document.querySelectorAll(".cell-card:not([data-status-bar])"));
     const losing = cells.slice(slots).map((card) => {
-      const select = card.querySelector("select[name='plugin']");
-      return select && select.value ? select.value : "";
+      const value = card.querySelector("input[name='plugin']");
+      if (!value || !value.value) return "";
+      const shown = card.querySelector("[data-wp-input]");
+      return (shown && shown.value) || value.value;
     }).filter(Boolean);
     if (!losing.length) return true;
     return window.confirm(

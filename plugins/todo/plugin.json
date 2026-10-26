@@ -6,6 +6,7 @@
   "locales": ["en", "cs", "de", "es", "fr", "it", "lt", "nb", "nl", "pl", "pt", "sk", "sv", "zh-CN", "zh-TW"],
   "description": "Persistent todo lists. Create lists and add items on the admin page (Widgets \u2192 Todo); the widget cell renders the chosen list as a read-only checklist. Completed items auto-prune after 24 hours so the list doesn't grow indefinitely.",
   "icon": "ph-list-checks",
+  "category": "plans",
   "supports": {
     "sizes": [
       "xs",

@@ -2373,3 +2373,27 @@ def test_choice_image_takes_the_ingress_prefix(app: Flask) -> None:
         )
     with app.app_context():
         assert ci("/plugins/w/static/a.jpg") == "/plugins/w/static/a.jpg"
+
+
+def test_cell_widget_picker_replaces_the_select(app: Flask, tmp_path: Path) -> None:
+    """The cell's widget field is a search box over a page-wide entry list,
+    with the chosen id in a hidden input that keeps the reload-on-change
+    behaviour of the old select, and the card head shows the widget's name."""
+    client = app.test_client()
+    _sign_in(client)
+    pid = _new(client, name="Home", layout="1_cell")
+    cell_id = _store(tmp_path).get(pid).cells[0].id
+    client.post(f"/pages/{pid}/cells/{cell_id}", data={"plugin": "widget_a"})
+    html = client.get(f"/pages/{pid}").get_data(as_text=True)
+
+    assert f'<select id="cell-{cell_id}-plugin"' not in html
+    assert 'name="plugin" value="widget_a" data-reload-on-change="1" data-wp-value' in html
+    assert 'role="combobox"' in html
+    assert 'value="Widget A"' in html
+    assert '<span class="cell-card-plugin">Widget A</span>' in html
+    assert "widget-picker.js" in html
+
+    blob = html.split('id="widget-picker-data">', 1)[1].split("</script>", 1)[0]
+    picker = json.loads(blob)
+    assert {c["id"] for c in picker["categories"]} >= {"utility", "time"}
+    assert {w["id"] for w in picker["widgets"]} == {"widget_a", "widget_b", "widget_c"}

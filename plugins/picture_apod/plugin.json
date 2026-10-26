@@ -22,6 +22,7 @@
   ],
   "description": "NASA's Astronomy Picture of the Day, full bleed, from science.nasa.gov. Skips past video entries so the cell always shows an image. No API key needed.",
   "icon": "ph-planet",
+  "category": "art",
   "supports": {
     "sizes": [
       "sm",

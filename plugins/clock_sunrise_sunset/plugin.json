@@ -6,6 +6,7 @@
   "locales": ["en", "cs", "de", "es", "fr", "it", "lt", "nb", "nl", "pl", "pt", "sk", "sv", "zh-CN", "zh-TW"],
   "description": "Today's sunrise, sunset, golden hour, and day length for a chosen lat/lon. The hero shows a sun-arc visualisation with the current position marked. Data from Open-Meteo (no key).",
   "icon": "ph-sun-horizon",
+  "category": "time",
   "supports": {
     "sizes": [
       "sm",

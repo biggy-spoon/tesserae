@@ -6,6 +6,7 @@
   "locales": ["en", "cs", "de", "es", "fr", "it", "lt", "nb", "nl", "pl", "pt", "sk", "sv", "zh-CN", "zh-TW"],
   "description": "A security-focused overview of every lock.* entity plus door / window / garage / opening binary_sensors. Stateful kind glyphs (ph-lock ↔ ph-lock-open, ph-door ↔ ph-door-open, etc.) communicate state via icon rather than text colour alone; unsecured rows wear a terracotta wash + an 'unsecured for Xm' timer chip. Auto-discovers entities, nothing to configure beyond the label and which kinds of openings to include.",
   "icon": "ph-lock",
+  "category": "home-assistant",
   "supports": {
     "sizes": [
       "sm",

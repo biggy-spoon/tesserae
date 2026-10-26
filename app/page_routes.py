@@ -63,6 +63,9 @@ from app.panel import (
 from app.plugin_loader import Plugin, PluginRegistry
 from app.state.page_store import Cell, Page, PageStore, Panel, clean_custom_css
 from app.state.settings_store import SettingsStore
+from app.widget_picker import CATEGORIES as WIDGET_CATEGORIES
+from app.widget_picker import display_name as widget_display_name
+from app.widget_picker import picker_entries as widget_picker_entries
 
 logger = logging.getLogger(__name__)
 
@@ -720,6 +723,11 @@ def _editor_context(page: Page) -> dict[str, Any]:
         "page": page,
         "panel": panel,
         "plugins": widgets,
+        "widget_picker": {
+            "categories": [{"id": c, "label": label} for c, label in WIDGET_CATEGORIES],
+            "widgets": widget_picker_entries(widgets),
+        },
+        "widget_names": {w.id: widget_display_name(w.name, w.id) for w in widgets},
         "plugin_cell_options": _materialize_cell_options(widgets),
         "fonts": sorted(plugins.fonts.values(), key=lambda f: f.name.lower()),
         "layouts": LAYOUTS,

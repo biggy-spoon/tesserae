@@ -5,6 +5,7 @@
   "kind": "widget",
   "description": "Analog clock face. Pure SVG, no network. Five face styles, pick the one that suits the rest of your dashboard.",
   "icon": "ph-clock",
+  "category": "time",
   "supports": { "sizes": ["xs", "sm", "md", "lg"] },
   "cell_options": [
     {

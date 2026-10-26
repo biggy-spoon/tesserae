@@ -30,6 +30,10 @@
       "description": "Phosphor icon class (e.g. 'ph-list-checks').",
       "pattern": "^ph-[a-z0-9-]+$"
     },
+    "category": {
+      "description": "Subject the editor's widget picker groups this widget under. Optional; without it the picker guesses from the family in the name and falls back to utility.",
+      "enum": ["time", "plans", "weather", "home-assistant", "reading", "art", "places", "media", "sports", "transport", "dev", "finance", "utility"]
+    },
     "supports": {
       "type": "object",
       "required": ["sizes"],
