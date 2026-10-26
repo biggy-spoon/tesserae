@@ -6,6 +6,13 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.480.1], 2026-10-26
+
+### Fixed
+
+- The battery route tests run against the onboarding check added in 0.479.1,
+  so CI passes again. No change to the app itself.
+
 ## [0.480.0], 2026-10-26
 
 ### Fixed
