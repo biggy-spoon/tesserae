@@ -6,6 +6,22 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.480.0], 2026-10-26
+
+### Fixed
+
+- Under Home Assistant, the Plugins menu entries for Specimen Sheet,
+  Overhead, Orbit, Trackside and Underway open their paintings page instead
+  of a 404, and the painting progress card in the jobs tray links there too.
+- More of the interface follows dark mode: the location field's coordinates
+  and icons, parts of the Themes page, the schedule condition picker,
+  rotation and catalog borders, artwork tags and the Pages selection count
+  were reading theme colours under names that don't exist and fell back to
+  light ones.
+- Setting a password for direct access after setting Tesserae up through
+  Home Assistant's ingress goes to the home page instead of starting the
+  first-run wizard again.
+
 ## [0.479.1], 2026-10-26
 
 ### Fixed
