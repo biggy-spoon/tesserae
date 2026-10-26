@@ -6,6 +6,25 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.479.0], 2026-10-26
+
+### Changed
+
+- The widget field on a dashboard cell is a search box in place of the long
+  dropdown. With nothing typed it lists your recently picked widgets and
+  then every widget grouped by subject (Time & dates, Weather & sky, Home
+  Assistant, Transport and so on); typing filters by name, family, id and
+  description, and the arrow keys and Enter pick. Names read the same way
+  throughout: "Orbit: Pass" shows as "Orbit, Pass", and a name left as the
+  widget's id, such as `topo_map`, shows in words. The cell's heading shows
+  the widget's name in place of its id.
+
+### Added
+
+- Widget manifests take an optional `category` naming the subject the picker
+  groups the widget under. Bundled widgets declare one; a widget without it
+  is grouped by the family in its name, or under Utility.
+
 ## [0.478.0], 2026-10-26
 
 ### Added
