@@ -6,6 +6,17 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.479.1], 2026-10-26
+
+### Fixed
+
+- The first-run wizard shows on a fresh Home Assistant app install. The
+  broker host the app's Configuration tab supplies (`core-mosquitto` by
+  default) no longer counts as setup already done, so a new or cleared
+  install lands in the wizard instead of the Send page.
+- On the Send page, the What to send and Live preview cards line up at the
+  top under the paper theme.
+
 ## [0.479.0], 2026-10-26
 
 ### Changed
