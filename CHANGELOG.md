@@ -6,6 +6,24 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.482.0], 2026-10-27
+
+### Changed
+
+- Settings builds only the cards the open tab shows. Every tab used to
+  assemble the full device view-model (status, timetable, palette and
+  firmware lookups for each display) and then discard it, which is what
+  made the Server tab slow to open on a Docker install with a few
+  devices.
+- The System tab's GitHub release check on Docker and other non-git
+  installs runs in the background. The page renders the cached result,
+  or a "checking" line that fills in once the check finishes, instead
+  of waiting on GitHub before it can load.
+- The per-device firmware "update available" lookup no longer waits on
+  api.tesserae.ink during a Settings render. A cold or expired cache
+  starts one background fetch per device kind, and the next render
+  shows the answer.
+
 ## [0.481.2], 2026-10-27
 
 ### Fixed

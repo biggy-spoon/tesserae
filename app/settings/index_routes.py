@@ -87,7 +87,11 @@ def settings_area(area: str) -> str | Response:
     (server / renderers / devices / plugins)."""
     if area not in AREA_KINDS:
         return Response(f"unknown settings area {area!r}", status=404)
-    sections = [s for s in _build_sections() if s["kind"] in AREA_KINDS[area]]
+    # Only the kinds this tab shows get built. The device view-models in
+    # particular are the dear part of a render (status, timetable, palette
+    # and firmware lookups per display), and the Server tab has no use for
+    # them.
+    sections = _build_sections(AREA_KINDS[area])
     # Server tab: replace the single "App" card with the seven grouped
     # section cards (Network / Location / Quiet hours / Low-battery /
     # Display / Marketplace / Privacy). The Broker + Virtual-panel
@@ -182,6 +186,7 @@ def settings_area(area: str) -> str | Response:
     # Proxmox VE helper script (``update`` in the container shell).
     install_method = os.environ.get("TESSERAE_INSTALL_METHOD", "").strip()
     system_release_check = None
+    system_release_pending = False
     system_git_available = True
     if area == "system":
         upd = current_app.config["UPDATER"]
@@ -195,13 +200,16 @@ def settings_area(area: str) -> str | Response:
         #  - Git checkout: full in-app updater (check / apply / rollback).
         system_git_available = upd.has_git_repo()
         if in_container or not system_git_available:
-            # Skip the live API call under ``app.testing`` so tests
-            # don't depend on network reachability, the rest of the
-            # branch (the docker / bare-install hint) still renders.
+            # Skip the API check under ``app.testing`` so tests don't
+            # start network threads, the rest of the branch (the docker /
+            # bare-install hint) still renders. Outside tests this never
+            # waits on GitHub: it renders what is cached and the page
+            # polls /settings/system/release-check while a refresh runs.
             if not current_app.testing:
-                system_release_check = upd.latest_release_via_api(
+                system_release_check = upd.release_check_status(
                     current_app.config.get("APP_VERSION", "0.0.0")
                 )
+                system_release_pending = upd.release_check_pending()
         else:
             try:
                 system_state = upd.current_state()
@@ -285,6 +293,7 @@ def settings_area(area: str) -> str | Response:
         system_git_available=system_git_available,
         system_install_method=install_method,
         system_release_check=system_release_check,
+        system_release_pending=system_release_pending,
         system_webhook_token_set=system_webhook_token_set,
         system_webhook_reveal_token=system_webhook_reveal_token,
         system_mcp_enabled=system_mcp_enabled,
@@ -856,65 +865,77 @@ def _test_pattern_colors_for(device: Device) -> list[dict[str, Any]]:
     ]
 
 
-def _build_sections() -> list[dict[str, Any]]:
+def _build_sections(kinds: set[str] | None = None) -> list[dict[str, Any]]:
+    """One section dict per editable card. ``kinds`` names the section
+    kinds to build (an ``AREA_KINDS`` entry); ``None`` builds them all.
+    Kinds left out are skipped outright rather than built and dropped,
+    which is what keeps a Server-tab render from paying for every
+    device's status, timetable and firmware lookups."""
+
+    def wanted(kind: str) -> bool:
+        return kinds is None or kind in kinds
+
     store = settings_store()
     sections: list[dict[str, Any]] = []
 
-    app_raw = store.get_section("app")
-    sections.append(
-        {
-            "id": "app",
-            "kind": "app",
-            "title": "App",
-            "blurb": "Where Tesserae lives on the network.",
-            "fields": _app_fields_with_locale_choices(),
-            "state": _values_for_core("app", APP_FIELDS, app_raw),
-            "endpoint": url_for("auth.settings_update", section_kind="app"),
-            "meta": {"Network IP": detect_local_ip()},
-        }
-    )
-
-    broker_raw = store.get_section("broker")
-    broker_blurb = "Tesserae publishes frames here; devices subscribe."
-    if current_app.config.get("HA_INGRESS_MODE"):
-        broker_blurb = (
-            "Tesserae publishes frames here; devices subscribe. "
-            "Host, port, and credentials are managed in the Tesserae "
-            "App's Configuration tab, changes there apply on the "
-            "next App restart."
+    app_raw = store.get_section("app") if wanted("app") or wanted("panel") else {}
+    if wanted("app"):
+        sections.append(
+            {
+                "id": "app",
+                "kind": "app",
+                "title": "App",
+                "blurb": "Where Tesserae lives on the network.",
+                "fields": _app_fields_with_locale_choices(),
+                "state": _values_for_core("app", APP_FIELDS, app_raw),
+                "endpoint": url_for("auth.settings_update", section_kind="app"),
+                "meta": {"Network IP": detect_local_ip()},
+            }
         )
-    sections.append(
-        {
-            "id": "broker",
-            "kind": "broker",
-            "title": "MQTT broker",
-            "blurb": broker_blurb,
-            "fields": _broker_fields_with_client_id_hint(),
-            "state": _values_for_core("broker", BROKER_FIELDS, broker_raw),
-            "endpoint": url_for("auth.settings_update", section_kind="broker"),
-            "meta": {"MQTT URL": _broker_mqtt_url(broker_raw)},
-        }
-    )
+
+    if wanted("broker"):
+        broker_raw = store.get_section("broker")
+        broker_blurb = "Tesserae publishes frames here; devices subscribe."
+        if current_app.config.get("HA_INGRESS_MODE"):
+            broker_blurb = (
+                "Tesserae publishes frames here; devices subscribe. "
+                "Host, port, and credentials are managed in the Tesserae "
+                "App's Configuration tab, changes there apply on the "
+                "next App restart."
+            )
+        sections.append(
+            {
+                "id": "broker",
+                "kind": "broker",
+                "title": "MQTT broker",
+                "blurb": broker_blurb,
+                "fields": _broker_fields_with_client_id_hint(),
+                "state": _values_for_core("broker", BROKER_FIELDS, broker_raw),
+                "endpoint": url_for("auth.settings_update", section_kind="broker"),
+                "meta": {"MQTT URL": _broker_mqtt_url(broker_raw)},
+            }
+        )
 
     # Virtual panel: the fallback canvas size for pages with no target
     # device (the "(any)" option in the page editor). Registered devices
     # bring their own panel, so this only matters before you've added a
     # device or for deliberately device-agnostic pages, hence it sits
     # below the broker rather than up top.
-    sections.append(
-        {
-            "id": "panel",
-            "kind": "panel",
-            "title": "Virtual panel",
-            "blurb": "Fallback canvas size for pages with no target device. Pick a preset or set a custom size; Portrait flips width and height. Devices you register override this with their own panel.",
-            "fields": PANEL_FIELDS,
-            "state": _values_for_core("app", PANEL_FIELDS, app_raw),
-            "endpoint": url_for("auth.settings_update", section_kind="panel"),
-        }
-    )
+    if wanted("panel"):
+        sections.append(
+            {
+                "id": "panel",
+                "kind": "panel",
+                "title": "Virtual panel",
+                "blurb": "Fallback canvas size for pages with no target device. Pick a preset or set a custom size; Portrait flips width and height. Devices you register override this with their own panel.",
+                "fields": PANEL_FIELDS,
+                "state": _values_for_core("app", PANEL_FIELDS, app_raw),
+                "endpoint": url_for("auth.settings_update", section_kind="panel"),
+            }
+        )
 
-    enabled_map = store.get_section("renderers_enabled")
-    for renderer in renderers().all():
+    enabled_map = store.get_section("renderers_enabled") if wanted("renderer") else {}
+    for renderer in renderers().all() if wanted("renderer") else ():
         # Per-instance clones inherit the base renderer's settings; the
         # cards add no UI value and just create N rows of the same
         # form. Filter them out, clone ids always contain '__'
@@ -965,14 +986,14 @@ def _build_sections() -> list[dict[str, Any]]:
     # renamed, or re-registered from the Discovered strip; a user
     # scrolling Settings → Devices would otherwise see cards jump
     # around between saves.
-    _instances = [d for d in devices().all() if d.kind_of is not None]
+    _instances = [d for d in devices().all() if d.kind_of is not None] if wanted("device") else []
     _instances.sort(key=lambda d: ((d.name or d.id).casefold(), d.id))
     for device in _instances:
         section = _build_device_section(store, device)
         if section is not None:
             sections.append(section)
 
-    for plugin in plugins().plugins.values():
+    for plugin in plugins().plugins.values() if wanted("plugin") else ():
         fields = mark_unreadable_secrets(
             list(plugin.manifest.get("settings", [])), "plugins", plugin.id
         )
@@ -2308,7 +2329,9 @@ def _firmware_view(device: Device, parsed: dict[str, Any]) -> dict[str, Any]:
     Combines the ``fw_version`` value the client reported in its most
     recent heartbeat with the latest known version for its kind from the
     firmware-check module (which polls api.tesserae.ink lazily with a
-    60-minute cache).
+    60-minute cache). The lookup never waits on the network: a cold or
+    expired cache starts a background fetch and this render shows the
+    chip without a "latest", the next one has it.
 
     The api.tesserae.ink lookup is off by default and only runs when
     ``settings.app.check_firmware_updates`` is enabled; when it's off,
@@ -2329,7 +2352,9 @@ def _firmware_view(device: Device, parsed: dict[str, Any]) -> dict[str, Any]:
     current_str = str(current) if isinstance(current, (str, int, float)) else None
     latest = None
     if _firmware_check_enabled():
-        latest = firmware_check_module.latest_for_kind(kind_id, current=current_str or "")
+        latest = firmware_check_module.latest_for_kind(
+            kind_id, current=current_str or "", wait=False
+        )
     state = firmware_check_module.compare_versions(current_str, latest)
     return {
         "current": current_str,
