@@ -6,6 +6,15 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.481.2], 2026-10-27
+
+### Fixed
+
+- The Proxmox VE helper script asks for the release channel on the host,
+  before the container dialog. Asking inside the container never showed
+  the question, because the engine treats install-time prompts as
+  unattended, so every install silently took stable.
+
 ## [0.481.1], 2026-10-27
 
 ### Changed

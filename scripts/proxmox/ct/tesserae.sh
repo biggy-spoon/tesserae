@@ -15,12 +15,24 @@ var_os="${var_os:-debian}"
 var_version="${var_version:-13}"
 var_arm64="${var_arm64:-yes}"
 var_unprivileged="${var_unprivileged:-1}"
-export var_tesserae_channel="${var_tesserae_channel:-}"
+
+# Asked here on the host: inside the container every prompt counts as unattended.
+if [[ -z "${var_tesserae_channel:-}" ]] && command -v pveversion >/dev/null 2>&1; then
+  var_tesserae_channel=$(msg_menu "Choose the Tesserae release channel" \
+    "stable" "Newest tagged release" \
+    "edge" "Main branch, every commit")
+fi
+export var_tesserae_channel="${var_tesserae_channel:-stable}"
 
 header_info "$APP"
 variables
 color
 catch_errors
+
+if [[ ! "${var_tesserae_channel}" =~ ^(stable|edge)$ ]]; then
+  msg_error "var_tesserae_channel must be stable or edge"
+  exit 1
+fi
 
 function update_script() {
   header_info

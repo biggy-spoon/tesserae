@@ -13,9 +13,6 @@ setting_up_container
 network_check
 update_os
 
-if [[ -z "${var_tesserae_channel:-}" ]]; then
-  var_tesserae_channel=$(prompt_select "Release channel:" 1 60 "stable" "edge")
-fi
 var_tesserae_channel="${var_tesserae_channel:-stable}"
 
 msg_info "Installing Dependencies"

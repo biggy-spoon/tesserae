@@ -15,7 +15,7 @@ COMMUNITY_SCRIPTS_URL=https://raw.githubusercontent.com/dmellok/tesserae/main/sc
 
 `COMMUNITY_SCRIPTS_URL` tells the community-scripts engine where to fetch `install/tesserae-install.sh` from. The engine itself still comes from `community-scripts/core`.
 
-The installer asks for a release channel. `stable` (the default) installs the newest tagged release from a tarball; `edge` clones the `main` branch and follows every commit. To answer up front for an unattended run, set `var_tesserae_channel=edge` (or `stable`) in the environment alongside `COMMUNITY_SCRIPTS_URL`. The choice is recorded as `TESSERAE_CHANNEL` in `/opt/tesserae_data/tesserae.env`, and `update` reads it back to decide whether to look for a newer release or a newer commit.
+Before the container dialog, the script asks for a release channel; type `edge` or `stable` within ten seconds, or it takes `stable`. `stable` installs the newest tagged release from a tarball; `edge` clones the `main` branch and follows every commit. To answer up front for an unattended run, set `var_tesserae_channel=edge` (or `stable`) in the environment alongside `COMMUNITY_SCRIPTS_URL`. The choice is recorded as `TESSERAE_CHANNEL` in `/opt/tesserae_data/tesserae.env`, and `update` reads it back to decide whether to look for a newer release or a newer commit.
 
 The env file also sets `TESSERAE_INSTALL_METHOD=community-script`, which makes Settings → System in the app point at the `update` command instead of the bare-install advice to re-run the installer.
 
