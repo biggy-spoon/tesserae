@@ -6,6 +6,13 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.483.2], 2026-10-27
+
+### Changed
+
+- The paperlesspaper OpenPaper L is confirmed on real hardware: catalog notes,
+  tested data and the compatibility page say so.
+
 ## [0.483.0], 2026-10-27
 
 ### Added
