@@ -25,9 +25,9 @@
       "script": "ct/tesserae.sh",
       "config_path": "/opt/tesserae_data/tesserae.env",
       "resources": {
-        "cpu": 2,
-        "ram": 2048,
-        "hdd": 6,
+        "cpu": 4,
+        "ram": 3072,
+        "hdd": 16,
         "os": "Debian",
         "version": "13"
       }

@@ -6,6 +6,13 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.481.1], 2026-10-27
+
+### Changed
+
+- The Proxmox VE helper script defaults to 4 CPUs, 3 GB RAM and a 16 GB
+  disk. The metadata record matches.
+
 ## [0.481.0], 2026-10-27
 
 ### Added

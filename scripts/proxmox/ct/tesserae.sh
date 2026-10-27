@@ -8,9 +8,9 @@ source "$_cs_boot" 2>/dev/null || source <(curl -fsSL "${COMMUNITY_SCRIPTS_CORE_
 
 APP="Tesserae"
 var_tags="${var_tags:-dashboard;e-ink;iot}"
-var_cpu="${var_cpu:-2}"
-var_ram="${var_ram:-2048}"
-var_disk="${var_disk:-6}"
+var_cpu="${var_cpu:-4}"
+var_ram="${var_ram:-3072}"
+var_disk="${var_disk:-16}"
 var_os="${var_os:-debian}"
 var_version="${var_version:-13}"
 var_arm64="${var_arm64:-yes}"
