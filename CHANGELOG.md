@@ -6,6 +6,13 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Companion can report phone-confirmed Bluetooth mode, battery percentage and
+  firmware version. Settings shows the saved observations with their collection
+  times; newer Wi-Fi heartbeat readings take precedence. Reports persist across
+  restarts without changing device reachability or delivery rules.
+
 ## [0.486.0], 2026-10-28
 
 ### Added

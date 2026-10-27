@@ -4183,9 +4183,12 @@ select.dx-input:hover {
 .dx-devsec .dx-button-map .field { padding: 0; }
 .dx-devsec .dx-debug { margin-top: 4px; }
 .dx-devsec .dx-advanced-diag { margin-top: 14px; }
-.dx-devsec .dx-album-line { margin-top: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
-.dx-devsec .dx-album-line .dx-status-headline { font-weight: 600; }
-.dx-devsec .dx-album-line .dx-status-muted { color: var(--dx-faint); }
+.dx-devsec .dx-album-line,
+.dx-devsec .dx-mode-observation { margin-top: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.dx-devsec .dx-album-line .dx-status-headline,
+.dx-devsec .dx-mode-observation .dx-status-headline { font-weight: 600; }
+.dx-devsec .dx-album-line .dx-status-muted,
+.dx-devsec .dx-mode-observation .dx-status-muted { color: var(--dx-faint); }
 .dx-devsec .dx-smart-sync { margin-top: 16px; }
 .dx-devsec .dx-empty { padding: 26px 22px; }
 

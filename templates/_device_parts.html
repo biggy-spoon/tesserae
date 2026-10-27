@@ -13,6 +13,14 @@
 </div>
 {%- endmacro -%}
 
+{%- macro mode_badge(section) -%}
+{% if section.mode_observation and section.mode_observation.mode == 'bluetooth' %}
+<i class="ph ph-bluetooth dx-devrow-icon" role="img" data-device-mode-badge
+   aria-label="Bluetooth mode, last confirmed by phone"
+   title="Bluetooth · phone confirmed {{ section.mode_observation.observed_label }}"></i>
+{% endif %}
+{%- endmacro -%}
+
 {# The four tiles every overview shows, in the order the mockups fix. #}
 {%- macro overview_tiles(section) -%}
 {{ stat_tile('Showing', section.overview.showing) }}

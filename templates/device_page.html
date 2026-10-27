@@ -98,6 +98,17 @@
           </div>
         </div>
 
+        <div class="dx-status-line dx-mode-observation" data-device-mode-observation>
+          <span class="dx-status-muted">Phone last confirmed</span>
+          {% if section.mode_observation %}
+          <span class="dx-status-headline">{{ section.mode_observation.label }}</span>
+          <span class="dx-status-muted" aria-hidden="true">·</span>
+          <time class="dx-status-muted" datetime="{{ section.mode_observation.observed_at }}">{{ section.mode_observation.observed_label }}</time>
+          {% else %}
+          <span class="dx-status-muted">No report yet</span>
+          {% endif %}
+        </div>
+
         {# SMART SYNC PANEL #}
         {% if section.status.smart_sync and section.status.smart_sync.state != 'off' %}
         {% set ss = section.status.smart_sync %}

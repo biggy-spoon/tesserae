@@ -89,6 +89,65 @@ def test_device_page_unknown_device_redirects_to_the_list(app: Flask) -> None:
     assert resp.location.endswith("/settings/devices")
 
 
+def test_phone_mode_report_is_visible_and_wifi_removes_bluetooth_badge(app: Flask) -> None:
+    client = app.test_client()
+    _sign_in(client)
+    dev = _add(client)
+    other = _add(client, "study", name="Study")
+    before = client.get("/settings/devices").get_data(as_text=True)
+    assert "data-device-mode-badge" not in before
+    transport_before = re.findall(r'data-transport="([^"]+)"', before)
+    token, _ = app.config["COMPANION_TOKENS"].issue(
+        client={"name": "Phone", "platform": "ios", "version": "1"},
+        scopes=["device_setup:write"],
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    path = f"/api/app/v1/devices/{dev}/mode-observation"
+    for mode, timestamp in [
+        ("bluetooth", "2026-01-02T03:04:05Z"),
+        ("wifi", "2026-01-02T03:04:06Z"),
+    ]:
+        assert (
+            client.put(
+                path,
+                headers=headers,
+                json={"mode": mode, "observed_at": timestamp, "source": "ios_ble"},
+            ).status_code
+            == 204
+        )
+        body = client.get("/settings/devices").get_data(as_text=True)
+        assert re.findall(r'data-transport="([^"]+)"', body) == transport_before
+        assert body.count("data-device-mode-badge") == (1 if mode == "bluetooth" else 0)
+        detail = client.get(f"/settings/devices/{dev}").get_data(as_text=True)
+        assert "data-device-mode-observation" in detail
+        assert "Phone last confirmed" in detail
+        assert f'datetime="{timestamp}"' in detail
+        assert ("data-device-mode-badge" in detail) == (mode == "bluetooth")
+        assert ("Bluetooth" if mode == "bluetooth" else "Wi-Fi") in detail
+        provenance = app.config["DEVICE_FACTS"].get(dev)["mode_observation"]["token_id"]
+        assert provenance not in detail and token not in detail
+        other_detail = client.get(f"/settings/devices/{other}").get_data(as_text=True)
+        assert "data-device-mode-badge" not in other_detail
+        assert "No report yet" in other_detail
+
+
+def test_invalid_phone_observation_does_not_break_device_page(app: Flask) -> None:
+    client = app.test_client()
+    _sign_in(client)
+    dev = _add(client)
+    app.config["DEVICE_FACTS"].record_mode_observation(
+        dev,
+        {
+            "mode": "bluetooth",
+            "source": "ios_ble",
+            "observed_at": "not-a-date",
+        },
+    )
+    response = client.get(f"/settings/devices/{dev}")
+    assert response.status_code == 200
+    assert "data-device-mode-badge" not in response.get_data(as_text=True)
+
+
 def test_calibration_page_renders(app: Flask) -> None:
     client = app.test_client()
     _sign_in(client)
@@ -240,3 +299,42 @@ def test_connection_chips_link_to_the_firmware_page(app: Flask, monkeypatch) -> 
     assert 'href="https://github.com/example/firmware/releases/tag/v1.40.0"' in chips
     assert "release notes" in chips
     assert "Faster wakes" in chips
+
+
+def test_phone_telemetry_fills_existing_columns_without_changing_heartbeat(app: Flask) -> None:
+    from app.state.device_facts import DeviceFactsStore
+
+    client = app.test_client()
+    _sign_in(client)
+    dev = _add(client)
+    report = {
+        "mode": "bluetooth",
+        "source": "ios_ble",
+        "observed_at": "2026-01-02T03:04:05Z",
+        "battery": {"percent": 65, "observed_at": "2026-01-02T03:04:06Z"},
+        "firmware": {"version": "0.9.11", "observed_at": "2026-01-02T03:04:04Z"},
+    }
+    app.config["DEVICE_FACTS"].record_mode_observation(dev, report)
+    # Reopen persisted facts, as after container recreation.
+    app.config["DEVICE_FACTS"] = DeviceFactsStore(app.config["DEVICE_FACTS"]._path)
+    for path in ("/settings/devices", f"/settings/devices/{dev}"):
+        body = client.get(path).get_data(as_text=True)
+        assert "65%" in body and "v0.9.11" in body
+    assert dev not in app.config["DEVICE_STATUS"]
+    body = client.get("/settings/devices").get_data(as_text=True)
+    assert "no heartbeat yet" in body and 'title="Bluetooth · ' in body
+    # New Wi-Fi heartbeats win without modifying the persisted phone evidence.
+    app.config["DEVICE_STATUS"][dev] = {
+        "received_at": time.time(),
+        "parsed": {"battery_pct": 70, "fw_version": "0.9.12"},
+    }
+    body = client.get("/settings/devices").get_data(as_text=True)
+    assert "70%" in body and "v0.9.12" in body
+    assert "65%" not in body and "v0.9.11" not in body
+    # A newer phone reading supersedes older Wi-Fi data, including battery 0%.
+    app.config["DEVICE_STATUS"][dev]["received_at"] = 1
+    body = client.get("/settings/devices").get_data(as_text=True)
+    assert "65%" in body and "v0.9.11" in body
+    report["battery"] = {"percent": 0, "observed_at": "2026-01-02T03:04:07Z"}
+    app.config["DEVICE_FACTS"].record_mode_observation(dev, report)
+    assert "0%" in client.get("/settings/devices").get_data(as_text=True)
