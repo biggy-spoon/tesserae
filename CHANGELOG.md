@@ -6,6 +6,15 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.485.0], 2026-10-28
+
+### Changed
+
+- Paper design: Settings is a dropdown in the main sidebar, like Widgets,
+  instead of a second sidebar beside it. The dropdown holding the current
+  page opens with that page highlighted. Phones keep the tab strip, and
+  the classic design is unchanged.
+
 ## [0.484.0], 2026-10-28
 
 ### Added
