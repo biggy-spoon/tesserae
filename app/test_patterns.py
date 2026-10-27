@@ -28,6 +28,7 @@ from app.quantizer import (
     INKY_7COLOUR_PALETTE,
     WAVESHARE_E6_CALIBRATED_PALETTE,
     WAVESHARE_E6_PALETTE,
+    align_palette_override,
 )
 
 RGB = tuple[int, int, int]
@@ -238,7 +239,12 @@ def build_pattern(
     h = max(2, int(h))
     palette, labels = _palette_for(gamut, calibrated)
     if palette_override is not None and len(palette_override) >= len(palette):
-        palette = tuple(palette_override[: len(palette)])
+        # The profile emits its colours in Spectra 6 slot order; match them
+        # to this gamut's slots by colour, as the renderer does, so an
+        # inky_7colour preview does not swap green with yellow and blue
+        # with red (#386, the preview-side twin of #298).
+        nominal, _ = _palette_for(gamut, False)
+        palette = tuple(align_palette_override(palette_override, nominal)[: len(palette)])
 
     if pattern_id == "palette_swatches":
         img = _swatches(w, h, palette, labels)

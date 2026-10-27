@@ -1,0 +1,22 @@
+{
+  "tesserae_compat": "1.x",
+  "id": "huessen_epf1301",
+  "name": "Huessen EPF1301 13.3 inch frame",
+  "vendor": "Huessen",
+  "icon": "device-tablet",
+  "description": "13.3 inch Spectra 6 E Ink picture frame (EL133UF1, 1200x1600 portrait glass hung landscape) on an ESP32-S3 with 16 MB flash, 8 MB octal PSRAM, a Li-ion cell and native USB. Speaks Tesserae's v1 REST device API from the tesserae-device-firmware build (env huessen-epf1301) and paints the esp32_bin 4-bpp Spectra 6 frame, the same 960000-byte wire format as the reTerminal E1004.",
+  "protocol": "esp32_client",
+  "panel": {
+    "w": 1200,
+    "h": 1600,
+    "orientation": "portrait",
+    "name": "13.3 inch Spectra 6 ePaper (1200x1600)",
+    "gamut": "spectra_6",
+    "native_w": 1200,
+    "native_h": 1600
+  },
+  "refresh_floor_s": 60,
+  "image_format": "bin",
+  "auto_select": false,
+  "notes_md": "Confirmed on real hardware by the firmware's contributor (tesserae-device-firmware PR #54, 2026-10-28): self-test colour bars on both controller halves, the captive portal, registration and server frames. A healthy full refresh takes about 19 s; the firmware cycles the display rail around every paint, as the stock firmware does.\n\nWire format is exactly 960000 bytes (1200*1600/2), row-major from the top-left of the portrait framebuffer, high nibble = left pixel, Spectra 6 controller codes (0 black, 1 white, 2 yellow, 3 red, 5 blue, 6 green). The firmware registers with rotation 0 and turns nothing on the device, so a landscape dashboard is turned onto the portrait buffer by the server; set the device's orientation in Settings -> Devices for the way the frame hangs.\n\nNot auto-selected from a relay self-report: on the wire it is indistinguishable from the other 1200x1600 Spectra 6 kinds, so it is only ever set by the firmware declaring it at register / discover, or by the operator.\n\nThe first USB flash replaces the stock firmware, bootloader included; take a full flash backup first (`esptool.py --chip esp32s3 read_flash 0 0x1000000 huessen-stock.bin`). The panel runs off the battery rail, so the cell has to be fitted even on USB. The GPIO1 key wakes the frame and acts as Refresh."
+}

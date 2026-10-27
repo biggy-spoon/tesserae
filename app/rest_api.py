@@ -1830,7 +1830,20 @@ def post_status(device_id: str) -> Response:
     # (its clock is disciplined from the HTTP Date header every wake) and
     # sheds the awake-time slip a relative timer carries; older firmware
     # ignores it and still lands close via next_poll_s.
-    if wake_at is not None:
+    if wake_at is None:
+        # No alignment directive. A firmware that publishes neither
+        # sleep_until nor next_sleep_s had its wake predicted from the
+        # configured sleep_interval_s above; it is about to sleep for
+        # next_poll_s instead, so predict from that (#387).
+        telemetry = current_app.config.get("DEVICE_TELEMETRY")
+        if telemetry is not None:
+            try:
+                telemetry.note_issued_poll(device.id, interval_s=int(next_poll_s))
+            except Exception:
+                current_app.logger.exception(
+                    "rest /status: issued poll note failed for device=%s", device.id
+                )
+    else:
         response["wake_at"] = wake_at
         # The heartbeat recorded above predicted this device's next wake
         # from the firmware's own sleep_until, which was computed before

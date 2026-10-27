@@ -195,6 +195,30 @@ def test_palette_override_paints_custom_colours() -> None:
         assert img.getpixel((i * swatch_w + swatch_w // 4, 2)) == expected
 
 
+def test_palette_override_lands_on_the_inky_slots_by_colour() -> None:
+    """#386: a profile's palette arrives in Spectra 6 slot order (black,
+    white, yellow, red, blue, green, orange). The inky_7colour gamut runs
+    black, white, green, blue, red, yellow, orange, so applying it by
+    position painted the calibrated yellow in the green swatch and the
+    blue in the red one, on the preview and on the panel."""
+    profile = (
+        (10, 10, 10),  # black
+        (240, 240, 240),  # white
+        (200, 190, 40),  # yellow
+        (180, 40, 40),  # red
+        (40, 60, 180),  # blue
+        (50, 140, 70),  # green
+        (220, 120, 30),  # orange
+    )
+    png = test_patterns.build_pattern(
+        "palette_swatches", 60 * 7, 60, gamut="inky_7colour", palette_override=profile
+    )
+    img = _open(png).convert("RGB")
+    by_slot = [profile[i] for i in (0, 1, 5, 4, 3, 2, 6)]  # the gamut's wire order
+    for i, expected in enumerate(by_slot):
+        assert img.getpixel((i * 60 + 15, 2)) == expected
+
+
 def test_tone_pipeline_neutral_leaves_pattern_untouched() -> None:
     baseline = test_patterns.build_pattern("grayscale_ramp", 96, 16)
     same = test_patterns.build_pattern(

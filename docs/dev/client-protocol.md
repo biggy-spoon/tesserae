@@ -1778,16 +1778,18 @@ wake-prediction fields the device publishes in `/status`:
   bypasses clock-skew math on the server.
 - `next_sleep_s` (seconds until the device wakes) is the fallback; the
   server adds it to the receipt time.
-- Publish neither and the server predicts from the configured
-  `sleep_interval_s`.
+- Publish neither and the server predicts from the `next_poll_s` it
+  handed out in the `/status` response, falling back to the configured
+  `sleep_interval_s` until it has issued one.
 
-Publishing is only worth it when your wake timing differs from that
-configured interval. A client that sleeps for exactly the `next_poll_s`
-it was handed gains nothing by echoing the value back, since the
-fallback already predicts from the same number. A client that wakes on
-its own schedule (a local time-table, irregular gaps, clock-aligned
-wakes) should publish, because there the server's fixed-interval
-assumption is simply wrong and no amount of observation will fix it.
+Publishing is only worth it when your wake timing differs from the
+`next_poll_s` you were handed. A client that sleeps for exactly that
+value gains nothing by echoing it back: the server already predicts from
+the same number, and it cannot be echoed on the first wake anyway, since
+no `next_poll_s` has been issued yet. A client that wakes on its own
+schedule (a local time-table, irregular gaps, clock-aligned wakes) should
+publish, because there the server's assumption is simply wrong and no
+amount of observation will fix it.
 
 A device becomes *trusted* after three consecutive wakes landing within
 ±60s of prediction, at which point the scheduler JIT-renders

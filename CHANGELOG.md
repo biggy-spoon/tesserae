@@ -6,6 +6,31 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.484.0], 2026-10-28
+
+### Added
+
+- Hardware kind `huessen_epf1301` for the Huessen EPF1301, a 13.3" Spectra 6
+  picture frame (EL133UF1, 1200x1600) on an ESP32-S3. It takes the same
+  960000-byte esp32_bin frame as the reTerminal E1004; firmware is the
+  `huessen-epf1301` build in tesserae-device-firmware, confirmed on real
+  hardware by its contributor. Not auto-selected from a relay self-report,
+  since it is indistinguishable on the wire from the other 13.3" Spectra 6
+  kinds.
+
+### Fixed
+
+- Smart sync predicts a silent device's next wake from the `next_poll_s` the
+  `/status` response handed out, not from the configured sleep interval. A
+  device that published neither `sleep_until` nor `next_sleep_s` and slept
+  for a lineup-driven 5 minute `next_poll_s` under a 30 minute interval
+  arrived "25 minutes early" every wake and never earned trust. (#387)
+- The calibration preview matches a palette profile to the panel's colour
+  slots by colour, as the renderer has since #298. On `inky_7colour` panels
+  (Inkplate 6COLOR, Inky Impression) the Palette Swatches pattern and the
+  live palette editor preview painted the calibrated yellow in the green
+  slot and the blue in the red one. (#386)
+
 ## [0.483.2], 2026-10-27
 
 ### Changed

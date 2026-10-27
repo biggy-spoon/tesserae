@@ -98,8 +98,9 @@ class DeviceTelemetry:
     last_wake_offset_s: int | None = None  # actual - predicted, signed
     # Where the prediction came from: "firmware" when the device published
     # sleep_until / next_sleep_s, "configured" when it was derived from the
-    # device's sleep_interval_s setting, "server" when the server issued the
-    # wake itself (wake alignment: the /status response dictated a one-shot
+    # device's sleep_interval_s setting, "issued" when it was re-derived from
+    # the next_poll_s the /status response handed out (#387), "server" when
+    # the server issued the wake itself (wake alignment: the /status response dictated a one-shot
     # next_poll_s, so the firmware's own sleep_until — computed before it
     # read that response — is stale and the server's answer outranks it).
     # Only the configured kind may be re-derived when an operator edits
@@ -380,6 +381,34 @@ class TelemetryStore:
             prev.predicted_next_wake_at = wake_at
             prev.last_sleep_interval_s = max(0, int(interval_s))
             prev.prediction_source = "server"
+            self._flush_locked()
+            return DeviceTelemetry(**prev.as_dict())
+
+    def note_issued_poll(self, device_id: str, *, interval_s: int) -> DeviceTelemetry | None:
+        """Record the ``next_poll_s`` the /status response just handed out,
+        for a device that published no wake time of its own (#387).
+
+        ``record_heartbeat`` runs before the response exists, so a silent
+        firmware's prediction is derived from the configured
+        ``sleep_interval_s``. The device then sleeps for the ``next_poll_s``
+        it was given, which a lineup projection can make much shorter than
+        that setting, and every wake lands "early" against the stale
+        prediction: smart sync never earns trust. This replaces the
+        configured fallback with the interval the device is actually
+        sleeping on. A firmware-published wake time, or a wake-alignment
+        directive (``note_server_directive``), is left alone; an always-on
+        device has no wake to predict."""
+        if interval_s <= 0:
+            return None
+        with self._lock:
+            prev = self._state.devices.get(device_id)
+            if prev is None or prev.last_heartbeat_at is None or prev.always_on:
+                return None
+            if prev.prediction_source not in ("configured", "issued"):
+                return None
+            prev.predicted_next_wake_at = prev.last_heartbeat_at + interval_s
+            prev.last_sleep_interval_s = int(interval_s)
+            prev.prediction_source = "issued"
             self._flush_locked()
             return DeviceTelemetry(**prev.as_dict())
 

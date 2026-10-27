@@ -422,3 +422,45 @@ def test_a_sleeping_device_is_still_scored(tmp_path: Path) -> None:
         "esp32_sleeper", received_at=1_000_600.0, parsed={}, configured_sleep_s=600
     )
     assert entry.consecutive_on_time_wakes == 1
+
+
+def test_issued_poll_replaces_a_configured_fallback(tmp_path: Path) -> None:
+    """#387: a device that publishes no wake time sleeps for the next_poll_s
+    it was handed, so that is what the prediction has to use, not the
+    configured sleep_interval_s the fallback picked before the response
+    existed."""
+    store = _make_store(tmp_path)
+    store.record_heartbeat("panel", received_at=1000.0, parsed={}, configured_sleep_s=1800)
+    entry = store.note_issued_poll("panel", interval_s=300)
+    assert entry is not None
+    assert entry.predicted_next_wake_at == 1300.0
+    assert entry.last_sleep_interval_s == 300
+    assert entry.prediction_source == "issued"
+    # The next wake lands on the issued interval and counts as on time.
+    entry = store.record_heartbeat("panel", received_at=1302.0, parsed={}, configured_sleep_s=1800)
+    assert entry.consecutive_on_time_wakes == 1
+    # And is re-issued each cycle, so trust keeps building.
+    store.note_issued_poll("panel", interval_s=300)
+    entry = store.record_heartbeat("panel", received_at=1601.0, parsed={}, configured_sleep_s=1800)
+    assert entry.consecutive_on_time_wakes == 2
+
+
+def test_issued_poll_leaves_firmware_and_server_predictions_alone(tmp_path: Path) -> None:
+    store = _make_store(tmp_path)
+    store.record_heartbeat(
+        "fw", received_at=1000.0, parsed={"next_sleep_s": 900}, configured_sleep_s=1800
+    )
+    assert store.note_issued_poll("fw", interval_s=300) is None
+    assert store.get("fw").predicted_next_wake_at == 1900.0
+
+    store.record_heartbeat("aligned", received_at=1000.0, parsed={}, configured_sleep_s=1800)
+    store.note_server_directive("aligned", wake_at=1512.0, interval_s=512)
+    assert store.note_issued_poll("aligned", interval_s=300) is None
+    assert store.get("aligned").prediction_source == "server"
+
+    store.record_heartbeat(
+        "mains", received_at=1000.0, parsed={}, configured_sleep_s=60, always_on=True
+    )
+    assert store.note_issued_poll("mains", interval_s=300) is None
+    assert store.note_issued_poll("unknown", interval_s=300) is None
+    assert store.note_issued_poll("fw", interval_s=0) is None

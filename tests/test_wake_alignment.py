@@ -297,6 +297,25 @@ def test_status_aligns_next_poll_to_the_clock_grid(app: Flask) -> None:
     assert body.get("wake_at") == pytest.approx(int(before) + poll, abs=2)
 
 
+def test_status_predicts_a_silent_device_from_the_issued_next_poll(app: Flask) -> None:
+    """#387: a device that publishes no wake time sleeps for the next_poll_s
+    it is handed, so the prediction has to come from that, not from the
+    configured sleep_interval_s, or every wake looks early and smart sync
+    never earns trust."""
+    client, token = _pair(app)
+    _configure(app, "grid_panel", sleep_interval_s=1800)
+    before = time.time()
+    body = _status(client, token)
+    poll = int(body["next_poll_s"])
+    assert "wake_at" not in body
+    entry = app.config["DEVICE_TELEMETRY"].get("grid_panel")
+    assert entry is not None
+    assert entry.prediction_source == "issued"
+    assert entry.last_sleep_interval_s == poll
+    assert entry.predicted_next_wake_at == pytest.approx(entry.last_heartbeat_at + poll, abs=1)
+    assert entry.last_heartbeat_at == pytest.approx(before, abs=5)
+
+
 def test_status_without_alignment_has_no_wake_at(app: Flask) -> None:
     client, token = _pair(app)
     _configure(app, "grid_panel", sleep_interval_s=900)
