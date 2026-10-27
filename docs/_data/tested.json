@@ -23,8 +23,8 @@
     },
     "esp32_bw_bin": {
       "status": "Tested",
-      "hardware": "Xteink X4 (GDEQ0426T82 / SSD1677, 800x480 mono) running CrossInk with Tesserae client support + Seeed reTerminal E1001 (800x480 mono) running tesserae-device-firmware",
-      "notes": "1-bpp packing confirmed end-to-end: a 48000-byte frame fetched and painted on the panel with no on-device decode, upright in the portrait_flipped composition. The X4 is an e-reader, so the dashboard is its sleep screen rather than a wake-cycle refresh. The remaining Seeed 800x480 mono SKUs (XIAO ePaper 7.5\", EE04 7.5\") and the Waveshare 4.2\" share this renderer but are still unconfirmed."
+      "hardware": "Xteink X4 (GDEQ0426T82 / SSD1677, 800x480 mono) running CrossInk with Tesserae client support + Seeed reTerminal E1001 (800x480 mono) running tesserae-device-firmware + Waveshare ESP32-S3-RLCD-4.2 (400x300 reflective LCD, ST7305) running tesserae-device-firmware",
+      "notes": "1-bpp packing confirmed end-to-end: a 48000-byte frame fetched and painted on the panel with no on-device decode, upright in the portrait_flipped composition. The X4 is an e-reader, so the dashboard is its sleep screen rather than a wake-cycle refresh. The remaining Seeed 800x480 mono SKUs (XIAO ePaper 7.5\", EE04 7.5\") and the Waveshare 4.2\" e-paper module share this renderer but are still unconfirmed; the RLCD board is confirmed."
     },
     "trmnl_png": {
       "status": "Tested",

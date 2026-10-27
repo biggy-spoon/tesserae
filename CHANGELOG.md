@@ -14,9 +14,9 @@ All notable changes to Tesserae are recorded here. Format loosely follows
   400x300 reflective LCD (Sitronix ST7305). Not e-paper: it repaints instantly
   and holds its image only while powered. Inherits `esp32_bw_client` and the
   15000-byte mono frame the Waveshare 4.2" e-paper module takes; firmware is
-  the `waveshare-rlcd-42` build in tesserae-device-firmware. Not yet confirmed
-  on real hardware, and not auto-selected from a relay self-report because it
-  shares the mono 400x300 report with the e-paper module.
+  the `waveshare-rlcd-42` build in tesserae-device-firmware, confirmed on a
+  bench unit. Not auto-selected from a relay self-report because it shares
+  the mono 400x300 report with the e-paper module.
 
 ## [0.482.0], 2026-10-27
 
