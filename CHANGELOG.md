@@ -6,6 +6,20 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.481.0], 2026-10-27
+
+### Added
+
+- A Proxmox VE helper script in the community-scripts format, under
+  `scripts/proxmox/`. It creates an unprivileged Debian 13 container,
+  installs Tesserae on a stable (tagged release) or edge (main branch)
+  channel with Chromium and a systemd service, and lands on the setup
+  wizard. `update` in the container shell moves it forward on the chosen
+  channel. The LXC install page documents how to run it.
+- Installers that own the upgrade path can set `TESSERAE_INSTALL_METHOD`;
+  Settings → System then points at their update command instead of
+  suggesting a re-run of install.sh. The helper script sets it.
+
 ## [0.480.1], 2026-10-26
 
 ### Fixed

@@ -145,6 +145,46 @@ def test_system_page_swaps_update_card_under_docker(
     assert "Update &amp; restart" not in body
 
 
+def test_system_page_points_helper_script_installs_at_update_command(
+    app: Flask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Proxmox VE helper-script install (``TESSERAE_INSTALL_METHOD=
+    community-script``) on the stable channel is a release tarball with
+    no ``.git``. The Updates card must send the user to the container's
+    ``update`` command, not the generic "re-run install.sh" advice,
+    which would wreck that install's layout."""
+    from app.updater import Updater
+
+    monkeypatch.setenv("TESSERAE_INSTALL_METHOD", "community-script")
+    monkeypatch.delenv("TESSERAE_IN_DOCKER", raising=False)
+    monkeypatch.setattr(Updater, "has_git_repo", lambda self: False)
+    client = app.test_client()
+    _sign_in(client)
+    body = client.get("/settings/system").get_data(as_text=True)
+    assert "<code>update</code>" in body
+    assert "pct enter" in body
+    assert "install.sh | bash" not in body
+    assert "docker compose pull" not in body
+    assert "Check for updates" not in body
+
+
+def test_system_page_bare_install_without_method_keeps_installer_hint(
+    app: Flask, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without ``TESSERAE_INSTALL_METHOD`` a non-git install still gets
+    the install.sh hint, so the helper-script branch is opt-in."""
+    from app.updater import Updater
+
+    monkeypatch.delenv("TESSERAE_INSTALL_METHOD", raising=False)
+    monkeypatch.delenv("TESSERAE_IN_DOCKER", raising=False)
+    monkeypatch.setattr(Updater, "has_git_repo", lambda self: False)
+    client = app.test_client()
+    _sign_in(client)
+    body = client.get("/settings/system").get_data(as_text=True)
+    assert "install.sh | bash" in body
+    assert "pct enter" not in body
+
+
 def test_update_apply_refused_under_docker(app: Flask, monkeypatch: pytest.MonkeyPatch) -> None:
     """A hand-crafted POST to /settings/system/update/apply under the
     Docker image is server-side refused too, not just hidden in the UI."""

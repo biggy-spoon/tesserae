@@ -176,6 +176,11 @@ def settings_area(area: str) -> str | Response:
         session.pop("_trmnl_token_reveal", None) if area == "devices" else None
     )
     in_container = bool(os.environ.get("TESSERAE_IN_DOCKER"))
+    # Set by installers that own the upgrade path themselves, so the
+    # Settings → System card can point at their command instead of the
+    # generic "re-run install.sh" advice. ``community-script`` is the
+    # Proxmox VE helper script (``update`` in the container shell).
+    install_method = os.environ.get("TESSERAE_INSTALL_METHOD", "").strip()
     system_release_check = None
     system_git_available = True
     if area == "system":
@@ -278,6 +283,7 @@ def settings_area(area: str) -> str | Response:
         # rebuild) and show a "docker pull" hint instead.
         system_in_container=in_container,
         system_git_available=system_git_available,
+        system_install_method=install_method,
         system_release_check=system_release_check,
         system_webhook_token_set=system_webhook_token_set,
         system_webhook_reveal_token=system_webhook_reveal_token,

@@ -583,6 +583,8 @@
   <section class="dx-section-card">
     {% if system_in_container %}
     {{ card_head('Updates', icon_name='arrow-clockwise', blurb='Tesserae is running from the official Docker image. Updates land via a new image, not an in-app pull, but we still check GitHub for newer releases so you know when one is out.') }}
+    {% elif system_install_method == 'community-script' %}
+    {{ card_head('Updates', icon_name='arrow-clockwise', blurb="Tesserae was installed by the Proxmox VE helper script, which owns the upgrade path. We still check GitHub for newer releases so you know when one is out.") }}
     {% else %}
     {{ card_head('Updates', icon_name='arrow-clockwise', blurb="This install isn't a git checkout, so the in-app pull-and-restart flow can't run, but we still check GitHub for newer releases so you know when one is out.") }}
     {% endif %}
@@ -611,6 +613,10 @@
     <pre class="code-snippet"><code>docker compose pull
 docker compose up -d</code></pre>
     <p class="field-help">Your <code>/app/data</code> volume carries settings, pages, and history across the recreate. Pin the image tag (not <code>:latest</code>) if you want deliberate upgrade steps. The container restarts on the new image, expect a ~1s blip.</p>
+    {% elif system_install_method == 'community-script' %}
+    <p class="field-help">To upgrade, open the container's shell (the console in the Proxmox web UI, or <code>pct enter &lt;ctid&gt;</code> on the host) and run:</p>
+    <pre class="code-snippet"><code>update</code></pre>
+    <p class="field-help">That stops the service, installs the newest release on your channel, rebuilds the environment and starts Tesserae again. Everything under <code>/opt/tesserae_data</code> stays as it is.</p>
     {% else %}
     <p class="field-help">The in-app pull-and-restart flow needs a git checkout of the repo as the source dir Tesserae is running from. To enable it, re-run the installer from the install guide, it does <code>git clone</code> + <code>pip install -e</code> under one venv, which keeps the running code pointed at the source tree (and the <code>.git</code> directory that lets this card pull + apply updates).</p>
     <pre class="code-snippet"><code>curl -fsSL https://raw.githubusercontent.com/dmellok/tesserae/main/install.sh | bash</code></pre>
