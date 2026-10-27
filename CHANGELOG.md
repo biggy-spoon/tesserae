@@ -6,6 +6,18 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.483.0], 2026-10-27
+
+### Added
+
+- Hardware kind `waveshare_rlcd_42` for Waveshare's ESP32-S3-RLCD-4.2, a 4.2"
+  400x300 reflective LCD (Sitronix ST7305). Not e-paper: it repaints instantly
+  and holds its image only while powered. Inherits `esp32_bw_client` and the
+  15000-byte mono frame the Waveshare 4.2" e-paper module takes; firmware is
+  the `waveshare-rlcd-42` build in tesserae-device-firmware. Not yet confirmed
+  on real hardware, and not auto-selected from a relay self-report because it
+  shares the mono 400x300 report with the e-paper module.
+
 ## [0.482.0], 2026-10-27
 
 ### Changed

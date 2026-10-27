@@ -148,6 +148,7 @@ E-ink writing tablets running the [tesserae.remarkable](https://github.com/partr
 | [Waveshare 13.3" Spectra E6 (ESP32-S3)](https://www.waveshare.com/esp32-s3-epaper-13.3e6.htm) | 1200×1600 portrait | `waveshare_e6` | `esp32_client` (inherit) | `waveshare_133e6` |
 | [Waveshare 7.3" e-Paper (F) on an ESP32-S3](https://www.waveshare.com/7.3inch-e-paper-hat-f.htm) | 800×480 | `inky_7colour` | `esp32_client` (inherit) | `waveshare_epaper_73f` |
 | [Waveshare E-Paper ESP32 Driver Board + 7.5" B/W](https://www.waveshare.com/e-paper-esp32-driver-board.htm) | 800×480 | `mono` / `gray_4` | `esp32_bw_client` <br> `esp32_bw_bin`, `esp32_gray2_bin` | `waveshare_esp32_driver_75` |
+| [Waveshare ESP32-S3-RLCD-4.2](https://www.waveshare.com/esp32-s3-rlcd-4.2.htm) | 400×300 | `mono` | `esp32_bw_client` <br> `esp32_bw_bin` | `waveshare_rlcd_42` |
 
 ### [Xteink](https://www.xteink.com/)
 
