@@ -45,6 +45,7 @@ from app.scheduled_refresh import ScheduledPlacement, scheduled_placements
 from app.scheduler_conditions import ConditionEvaluator
 from app.state.deck_migration import deck_to_schedule
 from app.state.deck_model import Deck
+from app.state.deck_nav_store import navigation_locked
 from app.state.deck_store import DeckStore
 from app.state.event_log import EventLog
 from app.state.rotation_model import Rotation, RotationStep
@@ -1264,58 +1265,65 @@ class Scheduler:
         for deck in self._deck_store.all():
             if not deck.enabled or deck.home_timeout_minutes <= 0 or not deck.device_ids:
                 continue
-            home = deck.resolved_home_page_id
-            timeout_s = deck.home_timeout_minutes * 60
             for device_id in deck.device_ids:
-                try:
-                    rec = self._deck_nav_store.get(device_id)
-                except Exception:
-                    continue
-                if rec is None or rec.get("deck_id") != deck.id:
-                    continue
-                if rec.get("page_id") == home:
-                    continue
-                updated_at = rec.get("updated_at")
-                if not isinstance(updated_at, (int, float)):
-                    continue
-                if now.timestamp() - float(updated_at) < timeout_s:
-                    continue
-                pusher = self._push_factory()
-                # Timer-driven, not user-initiated: respect quiet hours
-                # on BOTH paths. The push fallback gates itself, but the
-                # promote fast path would silently repaint a sleeping
-                # panel, so check before touching the live slot; the
-                # return simply lands after the window ends.
-                quiet_check = getattr(pusher, "device_in_quiet_hours", None)
-                if callable(quiet_check) and quiet_check(device_id):
-                    continue
-                promoter = getattr(pusher, "promote_deck_page", None)
-                promoted = callable(promoter) and promoter(device_id, home)
-                if not promoted:
-                    result = pusher.push(
-                        home,
-                        device_ids={device_id},
-                        respect_quiet_hours=True,
-                        source="deck",
-                    )
-                    if result.status not in DELIVERED_STATUSES:
-                        continue  # the panel didn't move: retry next tick, nav untouched
-                self._deck_nav_store.set(device_id, deck.id, home)
-                logger.info(
-                    "deck home return: device=%s deck=%s -> %s (%s)",
-                    device_id,
-                    deck.id,
-                    home,
-                    "promoted" if promoted else "pushed",
-                )
-                if self._event_log is not None:
-                    self._event_log.record(
-                        type="deck",
-                        source="deck",
-                        target=deck.id,
-                        status="sent",
-                        extra={"home_return_device": device_id, "page_id": home},
-                    )
+                # Read the position, deliver and record under the display's
+                # navigation lock, so a button press or Home Assistant's
+                # Next / Previous can't interleave with the return.
+                with navigation_locked(self._deck_nav_store, [device_id]):
+                    self._return_device_home(deck, device_id, now)
+
+    def _return_device_home(self, deck: Deck, device_id: str, now: datetime) -> None:
+        """One display's home return (see :meth:`_maybe_return_decks_home`);
+        the caller holds its navigation lock."""
+        if self._deck_nav_store is None:
+            return
+        home = deck.resolved_home_page_id
+        try:
+            rec = self._deck_nav_store.get(device_id)
+        except Exception:
+            return
+        if rec is None or rec.get("deck_id") != deck.id or rec.get("page_id") == home:
+            return
+        updated_at = rec.get("updated_at")
+        if not isinstance(updated_at, (int, float)):
+            return
+        if now.timestamp() - float(updated_at) < deck.home_timeout_minutes * 60:
+            return
+        pusher = self._push_factory()
+        # Timer-driven, not user-initiated: respect quiet hours on BOTH
+        # paths. The push fallback gates itself, but the promote fast path
+        # would silently repaint a sleeping panel, so check before touching
+        # the live slot; the return simply lands after the window ends.
+        quiet_check = getattr(pusher, "device_in_quiet_hours", None)
+        if callable(quiet_check) and quiet_check(device_id):
+            return
+        promoter = getattr(pusher, "promote_deck_page", None)
+        promoted = callable(promoter) and promoter(device_id, home)
+        if not promoted:
+            result = pusher.push(
+                home,
+                device_ids={device_id},
+                respect_quiet_hours=True,
+                source="deck",
+            )
+            if result.status not in DELIVERED_STATUSES:
+                return  # the panel didn't move: retry next tick, nav untouched
+        self._deck_nav_store.set(device_id, deck.id, home)
+        logger.info(
+            "deck home return: device=%s deck=%s -> %s (%s)",
+            device_id,
+            deck.id,
+            home,
+            "promoted" if promoted else "pushed",
+        )
+        if self._event_log is not None:
+            self._event_log.record(
+                type="deck",
+                source="deck",
+                target=deck.id,
+                status="sent",
+                extra={"home_return_device": device_id, "page_id": home},
+            )
 
     def _fire_cycle(self, rotation: Rotation, step_index: int, now: datetime) -> None:
         """Fire one due cycle record (#167 decommission). A cycle backed by a
@@ -1441,93 +1449,106 @@ class Scheduler:
             if rot.smart_sync and self._smart_sync_should_wait(target, rot.smart_sync_lead_s, now):
                 self._log_deck_skip(device_id, deck.id, target, "smart-sync wait")
                 continue
-            pusher = self._push_factory()
-            quiet_check = getattr(pusher, "device_in_quiet_hours", None)
-            if callable(quiet_check) and quiet_check(device_id):
-                self._log_deck_skip(device_id, deck.id, target, "quiet hours")
-                continue
-            promoter = getattr(pusher, "promote_deck_page", None)
-            promoted = (
-                callable(promoter)
-                and not self._warm_frame_is_stale(pusher, deck, device_id, target, now)
-                and promoter(device_id, target)
+            with navigation_locked(self._deck_nav_store, [device_id]):
+                # Delivery and the nav record happen together under the
+                # display's navigation lock, so a button press or Home
+                # Assistant's Next / Previous can't land in between.
+                if self._advance_device(deck, target, state, now, device_id, key):
+                    fired_any = True
+        return fired_any
+
+    def _advance_device(
+        self, deck: Deck, target: str, state: StepState, now: datetime, device_id: str, key: str
+    ) -> bool:
+        """Deliver one lineup advance to one display and record it (see
+        :meth:`_fire_deck_advance`); the caller holds its navigation
+        lock. True when the panel took the frame."""
+        pusher = self._push_factory()
+        quiet_check = getattr(pusher, "device_in_quiet_hours", None)
+        if callable(quiet_check) and quiet_check(device_id):
+            self._log_deck_skip(device_id, deck.id, target, "quiet hours")
+            return False
+        promoter = getattr(pusher, "promote_deck_page", None)
+        promoted = (
+            callable(promoter)
+            and not self._warm_frame_is_stale(pusher, deck, device_id, target, now)
+            and promoter(device_id, target)
+        )
+        if not promoted:
+            result = pusher.push(
+                target, device_ids={device_id}, respect_quiet_hours=True, source="deck"
             )
-            if not promoted:
-                result = pusher.push(
-                    target, device_ids={device_id}, respect_quiet_hours=True, source="deck"
+            if result.status not in DELIVERED_STATUSES:
+                # Retry next tick; don't record the transition (or the
+                # nav position: the panel is still on its previous
+                # page). Surface it though: a page that fails every time
+                # its window comes round leaves the panel holding the
+                # previous one, which reads as "the deck skips that
+                # dashboard" rather than "that dashboard won't render"
+                # (#167).
+                reason = result.error or f"push {result.status}"
+                logger.warning(
+                    "deck timer advance failed: device=%s deck=%s -> %s (%s)",
+                    device_id,
+                    deck.id,
+                    target,
+                    reason,
                 )
-                if result.status not in DELIVERED_STATUSES:
-                    # Retry next tick; don't record the transition (or the
-                    # nav position: the panel is still on its previous
-                    # page). Surface it though: a page that fails every time
-                    # its window comes round leaves the panel holding the
-                    # previous one, which reads as "the deck skips that
-                    # dashboard" rather than "that dashboard won't render"
-                    # (#167).
-                    reason = result.error or f"push {result.status}"
-                    logger.warning(
-                        "deck timer advance failed: device=%s deck=%s -> %s (%s)",
-                        device_id,
-                        deck.id,
-                        target,
-                        reason,
-                    )
-                    if self._event_log is not None:
-                        self._event_log.record(
-                            type="deck",
-                            source="deck",
-                            target=deck.id,
-                            status="failed" if result.status == "failed" else str(result.status),
-                            extra={
-                                "timer_advance_device": device_id,
-                                "page_id": target,
-                                "error": reason,
-                            },
-                        )
-                    continue
-            self._deck_nav_store.set(device_id, deck.id, target)
-            fired_any = True
-            with self._lock:
-                self._deck_last_advance[key] = target
-                self._deck_last_advance_at[key] = now.timestamp()
-                self._deck_last_advance_window[key] = state.step_started_at.timestamp()
-            logger.info(
-                "deck timer advance: device=%s deck=%s -> %s (%s)",
-                device_id,
-                deck.id,
-                target,
-                "promoted" if promoted else "pushed",
-            )
-            if self._event_log is not None:
-                if promoted:
-                    # A cache-hit promote changes what the panel shows without
-                    # touching the push pipeline, so nothing else writes a
-                    # History (``type="push"``) row for it. Record one here,
-                    # otherwise History lists the background warms nobody sees
-                    # while the flip the person actually watched is invisible.
-                    render_for = getattr(pusher, "deck_render_for", None)
-                    info = render_for(device_id, target) if callable(render_for) else None
-                    comp = (info or {}).get("composition_digest")
+                if self._event_log is not None:
                     self._event_log.record(
-                        type="push",
+                        type="deck",
                         source="deck",
-                        target=target,
-                        status="sent",
-                        digest=str(comp) if comp else None,
+                        target=deck.id,
+                        status="failed" if result.status == "failed" else str(result.status),
                         extra={
-                            "device_ids": [device_id],
-                            "promoted": True,
-                            "deck_id": deck.id,
+                            "timer_advance_device": device_id,
+                            "page_id": target,
+                            "error": reason,
                         },
                     )
+                return False
+        self._deck_nav_store.set(device_id, deck.id, target)
+        with self._lock:
+            self._deck_last_advance[key] = target
+            self._deck_last_advance_at[key] = now.timestamp()
+            self._deck_last_advance_window[key] = state.step_started_at.timestamp()
+        logger.info(
+            "deck timer advance: device=%s deck=%s -> %s (%s)",
+            device_id,
+            deck.id,
+            target,
+            "promoted" if promoted else "pushed",
+        )
+        if self._event_log is not None:
+            if promoted:
+                # A cache-hit promote changes what the panel shows without
+                # touching the push pipeline, so nothing else writes a
+                # History (``type="push"``) row for it. Record one here,
+                # otherwise History lists the background warms nobody sees
+                # while the flip the person actually watched is invisible.
+                render_for = getattr(pusher, "deck_render_for", None)
+                info = render_for(device_id, target) if callable(render_for) else None
+                comp = (info or {}).get("composition_digest")
                 self._event_log.record(
-                    type="deck",
+                    type="push",
                     source="deck",
-                    target=deck.id,
+                    target=target,
                     status="sent",
-                    extra={"timer_advance_device": device_id, "page_id": target},
+                    digest=str(comp) if comp else None,
+                    extra={
+                        "device_ids": [device_id],
+                        "promoted": True,
+                        "deck_id": deck.id,
+                    },
                 )
-        return fired_any
+            self._event_log.record(
+                type="deck",
+                source="deck",
+                target=deck.id,
+                status="sent",
+                extra={"timer_advance_device": device_id, "page_id": target},
+            )
+        return True
 
     @staticmethod
     def _log_deck_skip(device_id: str, deck_id: str, target: str, reason: str) -> None:
@@ -2427,12 +2448,15 @@ class Scheduler:
         # otherwise keeps duck-typed push managers (tests) compatible.
         if device_ids is not None:
             push_kwargs["device_ids"] = device_ids
-        result = self._push_factory().push(target_page, **push_kwargs)
-        # A bound trigger lineup's fire is a lineup advance: record the nav
-        # position, so Next / Previous step from what this fire put on the
-        # glass.
-        if nav_deck is not None and device_ids:
-            self._record_trigger_nav(nav_deck, target_page, result, set(device_ids))
+        # A bound trigger lineup's fire is a lineup advance: deliver and
+        # record the nav position under the displays' navigation locks, the
+        # same as a cycle lineup's step, so Next / Previous step from what
+        # this fire put on the glass.
+        nav_targets = sorted(device_ids) if nav_deck is not None and device_ids else []
+        with navigation_locked(self._deck_nav_store, nav_targets):
+            result = self._push_factory().push(target_page, **push_kwargs)
+            if nav_targets and nav_deck is not None:
+                self._record_trigger_nav(nav_deck, target_page, result, set(nav_targets))
         # Successful fires bump last_fired so the daily / interval gates
         # work; a failed push doesn't update it (the next tick can retry).
         # A ``quiet`` result also bumps it, every device was in quiet

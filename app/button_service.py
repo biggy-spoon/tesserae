@@ -51,7 +51,7 @@ from app.device_loader import DeviceRegistry
 from app.push import DELIVERED_STATUSES, PushManager, PushResult
 from app.scheduler import RotationSource, _deck_to_rotation
 from app.state.deck_model import Deck
-from app.state.deck_nav_store import DeckNavStore
+from app.state.deck_nav_store import DeckNavStore, navigation_locked
 from app.state.deck_store import DeckStore
 from app.state.device_rotation_state_model import DeviceRotationState
 from app.state.device_rotation_state_store import DeviceRotationStateStore
@@ -127,6 +127,13 @@ _REPUSH_DEBOUNCE_SECONDS = 3.0
 # since only the operator knows their receiver's latency. Overridable via
 # ``settings.app.button_webhook_refresh_delay_s``.
 _WEBHOOK_REFRESH_DELAY_SECONDS = 5.0
+
+# How long a press or a remote step waits for another navigation of the
+# same display (a scheduler advance mid-render, another press) to finish.
+# Past it a remote step gives up as busy; a physical press goes ahead
+# unserialised rather than leave the panel's request hanging on a render
+# that may be stuck.
+NAV_LOCK_TIMEOUT_S = 30.0
 
 # Actions whose spec carries a webhook URL to fire.
 _WEBHOOK_ACTIONS = ("webhook", "webhook_refresh")
@@ -402,7 +409,14 @@ class ButtonService:
     ) -> ButtonHandleResult:
         """Full path: resolve, dedup, dispatch, persist, push, then notify
         listeners (see :meth:`add_listener`)."""
-        result = self._handle_button(device_id=device_id, button=button, event_id=event_id)
+        with navigation_locked(self._deck_nav, [device_id], timeout=NAV_LOCK_TIMEOUT_S) as held:
+            if not held:
+                log.warning(
+                    "button press: device=%s navigation still busy after %.0fs; going ahead",
+                    device_id,
+                    NAV_LOCK_TIMEOUT_S,
+                )
+            result = self._handle_button(device_id=device_id, button=button, event_id=event_id)
         self._emit_button(device_id, button, result)
         return result
 
@@ -444,6 +458,8 @@ class ButtonService:
         device_id: str,
         forward: bool,
         source: str = "home_assistant",
+        lock_timeout_s: float | None = None,
+        settle_max_s: float | None = None,
     ) -> ButtonHandleResult:
         """Move one display a page forward or back on behalf of something
         other than the panel (Home Assistant's per-display Next / Previous).
@@ -477,7 +493,39 @@ class ButtonService:
         while automation is paused, like every user-initiated action. A
         manually pushed page doesn't change the lineup position, so a step
         from one goes to the page after the one the lineup was on. Every
-        outcome, no-ops included, writes a History row under ``source``."""
+        outcome, no-ops included, writes a History row under ``source``.
+
+        The display's navigation lock is held from reading its position to
+        recording the new one, so a scheduler advance or a press can't land
+        in between. ``lock_timeout_s`` / ``settle_max_s`` bound the
+        render-lock waits (promoting a warmed frame, the push) and the
+        settle, so a caller such as Home Assistant's command worker can't
+        block on a stuck render; past them the step reports the renderer
+        busy."""
+        label = "next" if forward else "previous"
+        with navigation_locked(self._deck_nav, [device_id], timeout=NAV_LOCK_TIMEOUT_S) as held:
+            if not held:
+                return self._step_noop(
+                    device_id,
+                    source=source,
+                    label=label,
+                    reason=f"another change to this display is still running after "
+                    f"{NAV_LOCK_TIMEOUT_S:.0f}s",
+                    error="Display busy, try again.",
+                )
+            deadlines: dict[str, Any] = {}
+            if lock_timeout_s is not None:
+                deadlines["lock_timeout_s"] = lock_timeout_s
+            if settle_max_s is not None:
+                deadlines["settle_max_s"] = settle_max_s
+            return self._step_locked(
+                device_id=device_id, forward=forward, source=source, deadlines=deadlines
+            )
+
+    def _step_locked(
+        self, *, device_id: str, forward: bool, source: str, deadlines: dict[str, Any]
+    ) -> ButtonHandleResult:
+        """:meth:`step` with the display's navigation lock held."""
         button = "right" if forward else "left"
         label = "next" if forward else "previous"
         now = self._clock()
@@ -516,6 +564,7 @@ class ButtonService:
                 origin_extra={"button": label, "deck_id": deck.id},
                 source=source,
                 remote=True,
+                deadlines=deadlines,
             )
         rotation = self._resolve_rotation(device_id)
         if rotation is None:
@@ -548,6 +597,7 @@ class ButtonService:
             origin_extra={"button": label},
             record_press=False,
             commit_on_delivery=True,
+            push_deadlines=deadlines,
         )
         push = result.push_result
         if self._push_getter() is None:
@@ -568,9 +618,11 @@ class ButtonService:
         label: str,
         reason: str,
         deck_id: str | None = None,
+        error: str | None = None,
     ) -> ButtonHandleResult:
-        """A :meth:`step` with nothing to step: no push, no state change,
-        one ``noop`` History row saying why."""
+        """A :meth:`step` with nothing to step (or, with ``error``, one that
+        couldn't run): no push, no state change, one ``noop`` History row
+        saying why."""
         log.info("%s step: device=%s %s is a no-op: %s", source, device_id, label, reason)
         result = ButtonHandleResult(
             device_id=device_id,
@@ -586,6 +638,7 @@ class ButtonService:
             override_until=None,
             pushed_page_id=None,
             push_result=None,
+            error=error,
         )
         extra: dict[str, object] = {"button": label}
         if deck_id is not None:
@@ -864,6 +917,7 @@ class ButtonService:
         origin_extra: dict[str, Any],
         source: str = "deck",
         remote: bool = False,
+        deadlines: dict[str, Any] | None = None,
     ) -> ButtonHandleResult:
         """Move the device to ``target_page`` within ``deck``: promote the
         pre-warmed frame when there is one (instant), else render on the fly.
@@ -874,12 +928,16 @@ class ButtonService:
         either way. ``source`` labels the push and the history row.
 
         ``remote`` (a :meth:`step` from outside the panel) leaves the panel's
-        dedup fingerprint untouched."""
+        dedup fingerprint untouched. Callers hold the device's navigation
+        lock, so nothing else moves the panel between the read of its
+        position and this commit."""
         pusher = self._push_getter()
         push_result: PushResult | None = None
+        deadlines = deadlines or {}
+        lock_kw = {k: v for k, v in deadlines.items() if k == "lock_timeout_s"}
         if pusher is not None:
             promoter = getattr(pusher, "promote_deck_page", None)
-            if not (callable(promoter) and promoter(device_id, target_page)):
+            if not (callable(promoter) and promoter(device_id, target_page, **lock_kw)):
                 # No warmed frame ready: render on the fly (Phase 4's refresh
                 # keeps decks warm so this is the cold-start / miss path).
                 push_result = pusher.push(
@@ -887,6 +945,7 @@ class ButtonService:
                     device_ids={device_id},
                     respect_quiet_hours=False,
                     source=source,
+                    **deadlines,
                 )
         delivered = pusher is not None and (
             push_result is None or push_result.status in DELIVERED_STATUSES
@@ -992,14 +1051,23 @@ class ButtonService:
         # device's current deck page navigates the deck (promoting the warmed
         # frame). Taps outside every zone fall through to the markup touch
         # regions (widget actions) below.
-        deck_touch = self._try_deck_touch(device_id, stroke)
-        if deck_touch is not None:
-            return self._deck_touch_navigate(
-                device_id=device_id,
-                deck=deck_touch[0],
-                target_page=deck_touch[1],
-                event_id=event_id,
-            )
+        # Read the position, deliver and record under the display's
+        # navigation lock, like a button press.
+        with navigation_locked(self._deck_nav, [device_id], timeout=NAV_LOCK_TIMEOUT_S) as held:
+            if not held:
+                log.warning(
+                    "touch: device=%s navigation still busy after %.0fs; going ahead",
+                    device_id,
+                    NAV_LOCK_TIMEOUT_S,
+                )
+            deck_touch = self._try_deck_touch(device_id, stroke)
+            if deck_touch is not None:
+                return self._deck_touch_navigate(
+                    device_id=device_id,
+                    deck=deck_touch[0],
+                    target_page=deck_touch[1],
+                    event_id=event_id,
+                )
         result = self._handle_touch(
             device_id=device_id,
             stroke=stroke,
@@ -2052,6 +2120,7 @@ class ButtonService:
         origin_extra: dict[str, object],
         record_press: bool = True,
         commit_on_delivery: bool = False,
+        push_deadlines: dict[str, Any] | None = None,
     ) -> ButtonHandleResult:
         """Shared dispatch tail for button presses and touch strokes:
         run the action, persist rotation state, push the resolved page
@@ -2177,6 +2246,7 @@ class ButtonService:
                         device_ids={device_id},
                         respect_quiet_hours=False,
                         source=origin,
+                        **(push_deadlines or {}),
                     )
                     if push_result.status in DELIVERED_STATUSES:
                         if commit_on_delivery:

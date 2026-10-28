@@ -198,11 +198,13 @@ def test_notify_renders_and_pushes_per_display(tmp_path: Path) -> None:
     assert push.push_image.call_count == 2
     kwargs = push.push_image.call_args.kwargs
     assert kwargs["source"] == "home_assistant"
+    assert all(c.kwargs["lock_timeout_s"] == 60.0 for c in push.push_image.call_args_list)
     assert kwargs["device_id"] in ("lounge", "hall")
     assert Image.open(io.BytesIO(push.push_image.call_args.args[0])).size == (800, 480)
     push.push_image.reset_mock()
     assert ha_hooks._notify(app, "lounge", "Just you") is None
     assert push.push_image.call_args.kwargs["device_id"] == "lounge"
+    assert push.push_image.call_args.kwargs["lock_timeout_s"] == 60.0
     assert ha_hooks._notify(app, "ghost", "x")
 
 
@@ -404,9 +406,10 @@ def test_step_device_resolves_the_button_service_per_call(tmp_path: Path) -> Non
     app.config["BUTTON_SERVICE"] = svc
     assert hooks.step_device_fn("lounge", 1) is None
     assert hooks.step_device_fn("lounge", -1) is None
+    deadlines = {"lock_timeout_s": 60.0, "settle_max_s": 30.0}
     assert [c.kwargs for c in svc.step.call_args_list] == [
-        {"device_id": "lounge", "forward": True, "source": "home_assistant"},
-        {"device_id": "lounge", "forward": False, "source": "home_assistant"},
+        {"device_id": "lounge", "forward": True, "source": "home_assistant", **deadlines},
+        {"device_id": "lounge", "forward": False, "source": "home_assistant", **deadlines},
     ]
 
 
@@ -423,3 +426,17 @@ def test_step_device_reports_unknown_displays_and_failed_pushes(tmp_path: Path) 
     # A no-op (nothing to step) or a promoted warm frame has no push result.
     svc.step.return_value = _result(push_result=None, pushed_page_id=None)
     assert ha_hooks._step_device(app, "lounge", 1) is None
+
+
+def test_invalidating_a_lineup_reports_a_busy_renderer(tmp_path: Path) -> None:
+    app = _app(tmp_path, _Device("lounge"))
+    push = MagicMock()
+    push.clear_deck_cache.return_value = False  # lock not free in time
+    app.config["PUSH_MANAGER"] = push
+    app.config["DECK_NAV_STORE"] = MagicMock()
+    deck = MagicMock(device_ids=["lounge"])
+    error = ha_hooks._invalidate_deck(app, deck)
+    assert error and "renderer busy" in error and "lounge" in error
+    assert push.clear_deck_cache.call_args.kwargs == {"lock_timeout_s": 60.0}
+    push.clear_deck_cache.return_value = True
+    assert ha_hooks._invalidate_deck(app, deck) is None

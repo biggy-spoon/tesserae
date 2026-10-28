@@ -10,7 +10,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from flask import Flask
 
+from app import ha_hooks
 from app.ha_discovery import (
     CMD_TOPIC_AUTOMATION,
     CMD_TOPIC_NOTIFY,
@@ -23,7 +25,7 @@ from app.ha_discovery import (
     HaHooks,
     HomeAssistantDiscovery,
 )
-from app.push import PushResult
+from app.push import PushManager, PushResult
 from app.state.deck_model import Deck, DeckPage
 from app.state.deck_nav_store import DeckNavStore
 from app.state.deck_store import DeckStore
@@ -213,10 +215,12 @@ def test_lineup_enabled_command_flips_deck_and_invalidates(tmp_path: Path) -> No
     )
     ha.start()
     ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/enabled", b"OFF")
+    assert ha._wait_commands_idle()
     assert decks.get("morning").enabled is False
     assert invalidated == ["morning"]
     assert _payload_for(client, "tesserae/ha/lineup/morning/state/enabled") == b"OFF"
     ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/enabled", b"ON")
+    assert ha._wait_commands_idle()
     assert decks.get("morning").enabled is True
     assert _payload_for(client, "tesserae/ha/lineup/morning/state/enabled") == b"ON"
 
@@ -231,6 +235,7 @@ def test_lineup_push_action_warms_and_pushes_entry(tmp_path: Path) -> None:
     )
     ha.start()
     ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"push")
+    assert ha._wait_commands_idle()
     assert pm.warm_deck_page.call_count == 2
     pm.push.assert_called_once_with(
         "home",
@@ -238,6 +243,8 @@ def test_lineup_push_action_warms_and_pushes_entry(tmp_path: Path) -> None:
         respect_quiet_hours=False,
         force_publish=True,
         source="home_assistant",
+        lock_timeout_s=60.0,
+        settle_max_s=30.0,
     )
     assert (
         nav.get("lounge") == {"deck_id": "morning", "page_id": "home"}
@@ -256,9 +263,11 @@ def test_lineup_next_and_prev_step_through_pages(tmp_path: Path) -> None:
     )
     ha.start()
     ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"next")
+    assert ha._wait_commands_idle()
     assert pm.push.call_args.args[0] == "weather"
     assert nav.get("lounge")["page_id"] == "weather"
     ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"prev")
+    assert ha._wait_commands_idle()
     assert pm.push.call_args.args[0] == "home"
     assert nav.get("lounge")["page_id"] == "home"
 
@@ -278,9 +287,11 @@ def test_lineup_step_records_a_position_only_when_the_page_was_delivered(
     ha.start()
     pm.push.return_value = PushResult(status=status, page_id="weather")
     ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"next")
+    assert ha._wait_commands_idle()
     assert nav.get("lounge")["page_id"] == "home"  # the glass never moved
     pm.push.return_value = PushResult(status="no_change", page_id="weather")
     ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"next")
+    assert ha._wait_commands_idle()
     assert nav.get("lounge")["page_id"] == "weather"
 
 
@@ -312,6 +323,7 @@ def test_device_lineup_select_binds_and_goes_live(tmp_path: Path) -> None:
     )
     ha.start()
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/lineup", b"Evening")
+    assert ha._wait_commands_idle()
     assert "lounge" in decks.get("evening").device_ids
     assert pm.push.call_args.kwargs["device_ids"] == {"lounge"}
     assert _payload_for(client, "tesserae/ha/dev/lounge/state/lineup") == b"Evening"
@@ -328,6 +340,7 @@ def test_device_lineup_select_none_unbinds(tmp_path: Path) -> None:
     )
     ha.start()
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/lineup", LINEUP_NONE.encode())
+    assert ha._wait_commands_idle()
     assert decks.get("morning").device_ids == []
     assert nav.get("lounge") is None
     assert _payload_for(client, "tesserae/ha/dev/lounge/state/lineup") == LINEUP_NONE.encode()
@@ -504,6 +517,7 @@ def test_update_entity_only_for_ota_capable_and_install_calls_hook(tmp_path: Pat
     assert state["latest_version"] == "1.30.1"
     assert state["release_url"] == "https://example.test/r"
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/firmware_install", b"install")
+    assert ha._wait_commands_idle()
     assert installs == ["lounge"]
 
 
@@ -591,6 +605,7 @@ def test_notify_commands_call_hook(tmp_path: Path) -> None:
     assert "homeassistant/notify/tesserae/dev_lounge_notify/config" in _topics(client)
     ha._on_notify_all_cmd(CMD_TOPIC_NOTIFY, b"Dinner is ready")
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/notify", b"Bins tonight")
+    assert ha._wait_commands_idle()
     assert calls == [(None, "Dinner is ready"), ("lounge", "Bins tonight")]
 
 
@@ -599,12 +614,15 @@ def test_refresh_action_pushes_the_page_on_glass(tmp_path: Path) -> None:
     pm.latest_render_for.return_value = {"page_id": "weather", "digest": "abc"}
     ha.start()
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"refresh")
+    assert ha._wait_commands_idle()
     pm.push.assert_called_once_with(
         "weather",
         device_ids={"lounge"},
         force_publish=True,
         bypass_coalesce=True,
         source="home_assistant",
+        lock_timeout_s=60.0,
+        settle_max_s=30.0,
     )
 
 
@@ -1065,6 +1083,7 @@ def test_next_prev_commands_route_to_the_hook(tmp_path: Path) -> None:
     ha.start()
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b" prev\n")
+    assert ha._wait_commands_idle()
     assert calls == [("lounge", 1), ("lounge", -1)]
     # Busy is cleared even when nothing pushed (a promoted warm frame).
     assert _payload_for(client, "tesserae/ha/state/busy") == b"0"
@@ -1083,6 +1102,7 @@ def test_next_prev_ignore_junk_and_unknown_displays(tmp_path: Path) -> None:
     ha._on_device_cmd("tesserae/ha/dev/ghost/cmd/action", b"next")  # unknown / deleted
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/next", b"next")  # wrong leaf
     ha._on_device_cmd("tesserae/ha/devlounge/cmd/action", b"next")  # malformed topic
+    assert ha._wait_commands_idle()
     assert calls == []
     pm.push.assert_not_called()
 
@@ -1096,6 +1116,7 @@ def test_step_error_and_exception_land_on_last_error(tmp_path: Path) -> None:
     )
     ha.start()
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
+    assert ha._wait_commands_idle()
     assert _payload_for(client, "tesserae/ha/state/last_error") == b"Lounge: render failed"
 
     def boom(_device_id: str, _delta: int) -> str | None:
@@ -1103,7 +1124,8 @@ def test_step_error_and_exception_land_on_last_error(tmp_path: Path) -> None:
 
     ha._hooks.step_device_fn = boom
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"prev")  # must not raise
-    assert _payload_for(client, "tesserae/ha/state/last_error") == b"Lounge: step failed"
+    assert ha._wait_commands_idle()
+    assert _payload_for(client, "tesserae/ha/state/last_error") == b"Lounge: failed"
     assert _payload_for(client, "tesserae/ha/state/busy") == b"0"
 
 
@@ -1141,6 +1163,7 @@ def test_next_steps_only_the_pressed_display_through_the_button_service(
     )
     ha.start()
     ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
+    assert ha._wait_commands_idle()
     assert pm.push.call_args.args[0] == "weather"
     assert pm.push.call_args.kwargs["device_ids"] == {"lounge"}
     assert pm.push.call_args.kwargs["source"] == "home_assistant"
@@ -1148,6 +1171,9 @@ def test_next_steps_only_the_pressed_display_through_the_button_service(
     assert nav.current_page("hall", "morning") == "home"
     # The pressed display's state was republished; it still follows Morning.
     assert _payload_for(client, "tesserae/ha/dev/lounge/state/lineup") == b"Morning"
+
+
+# ---------- publish toggles ----------
 
 
 def test_lineup_select_and_next_prev_agree_on_the_followed_lineup(tmp_path: Path) -> None:
@@ -1213,3 +1239,598 @@ def test_sweep_blanks_retained_next_prev_when_the_hook_is_gone(tmp_path: Path) -
     assert "homeassistant/button/tesserae/dev_lounge_next/config" in blanked
     assert "homeassistant/button/tesserae/dev_lounge_refresh/config" not in blanked
     assert "homeassistant/sensor/tesserae/dev_lounge_next_change/config" not in blanked
+
+
+def test_next_returns_from_the_mqtt_callback_at_once(tmp_path: Path) -> None:
+    # A step can wait behind a render of the same display (the navigation
+    # lock); it must not wait inside Paho's callback, which would stall
+    # every other command, heartbeat and keepalive meanwhile.
+    import threading
+    import time
+
+    gate = threading.Event()
+    calls: list[tuple[str, int]] = []
+
+    def slow_step(device_id: str, delta: int) -> str | None:
+        calls.append((device_id, delta))
+        assert gate.wait(5)
+        return "Lounge: b superseded"
+
+    rot_state = DeviceRotationStateStore(tmp_path / "rot.json")
+    ha, client, _pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(step_device_fn=slow_step, rotation_state_store=rot_state),
+    )
+    ha.start()
+    started = time.monotonic()
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
+    # Another command is handled while the step is still waiting.
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/hold", b"30")
+    assert time.monotonic() - started < 1.0
+    assert rot_state.get("lounge").override_until is not None
+    gate.set()
+    assert ha._wait_commands_idle()
+    assert calls == [("lounge", 1)]
+    # The outcome still reaches Home Assistant.
+    assert _payload_for(client, "tesserae/ha/state/last_error") == b"Lounge: b superseded"
+    worker = ha._command_worker
+    assert worker is not None
+    ha.stop()
+    worker.join(5)  # stop() doesn't wait; the idle worker exits on its own
+    assert not worker.is_alive() and ha._command_worker is None
+
+
+def test_a_full_step_queue_refuses_with_last_error(tmp_path: Path) -> None:
+    import threading
+
+    from app import ha_discovery as ha_module
+
+    gate = threading.Event()
+
+    def slow_step(_device_id: str, _delta: int) -> str | None:
+        gate.wait(5)
+        return None
+
+    ha, client, _pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(step_device_fn=slow_step),
+    )
+    ha.start()
+    try:
+        for _ in range(ha_module.COMMAND_QUEUE_MAX + 2):
+            ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
+        assert b"too many" in (_payload_for(client, "tesserae/ha/state/last_error") or b"")
+    finally:
+        gate.set()
+    assert ha._wait_commands_idle()
+
+
+def test_a_step_for_a_display_removed_while_queued_is_dropped(tmp_path: Path) -> None:
+    calls: list[tuple[str, int]] = []
+    registry = _FakeRegistry([_FakeDevice("lounge", "Lounge")])
+    ha, _client, _pm, _ = _wire(
+        tmp_path, devices=registry, hooks=HaHooks(step_device_fn=_steps_hook(calls))
+    )
+    ha.start()
+    ha._run_step("ghost", 1)
+    del registry._d["lounge"]
+    ha._run_step("lounge", 1)
+    assert calls == []
+
+
+# ---------- slow commands run on the command worker ----------
+
+
+def _blocking_push(pm: MagicMock):
+    """Make ``pm.push`` wait for a gate on its first call; record the rest."""
+    import threading
+
+    gate, started = threading.Event(), threading.Event()
+    order: list[tuple[str, frozenset[str] | None]] = []
+
+    def push(page_id: str, **kw):
+        ids = kw.get("device_ids")
+        order.append((page_id, frozenset(ids) if ids is not None else None))
+        started.set()
+        assert gate.wait(5)
+        return PushResult(status="sent", page_id=page_id)
+
+    pm.push.side_effect = push
+    return gate, started, order
+
+
+def test_every_slow_command_returns_from_the_mqtt_callback_at_once(tmp_path: Path) -> None:
+    import time
+
+    decks, nav, settings = _stores(tmp_path)
+    decks.upsert(_deck())
+    notes: list[tuple[str | None, str]] = []
+    installs: list[str] = []
+    steps: list[tuple[str, int]] = []
+    rot_state = DeviceRotationStateStore(tmp_path / "rot.json")
+    ha, _client, pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(
+            deck_store=decks,
+            deck_nav_store=nav,
+            settings_store=settings,
+            rotation_state_store=rot_state,
+            notify_fn=lambda d, m: notes.append((d, m)),
+            firmware_install_fn=lambda d: installs.append(d),
+            step_device_fn=lambda d, delta: steps.append((d, delta)),
+        ),
+    )
+    gate, started, _order = _blocking_push(pm)
+    ha.start()
+    t0 = time.monotonic()
+    ha._on_push_page_cmd("tesserae/ha/cmd/push_page", b"home")  # blocks the worker
+    assert started.wait(5)
+    ha._on_active_page_cmd("tesserae/ha/cmd/active_page", b"Weather")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/push", b"Weather")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"refresh")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/lineup", b"Morning")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/notify", b"Bins tonight")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/firmware_install", b"install")
+    ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"push")
+    ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"next")
+    ha._on_notify_all_cmd(CMD_TOPIC_NOTIFY, b"Dinner is ready")
+    # Cheap toggles still apply inline, while the worker is busy.
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/hold", b"30")
+    ha._on_automation_cmd(CMD_TOPIC_AUTOMATION, b"OFF")
+    ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/enabled", b"OFF")  # queued too
+    assert time.monotonic() - t0 < 1.0
+    assert rot_state.get("lounge").override_until is not None
+    assert settings.get_section("app")["automation_paused"] is True
+    assert decks.get("morning").enabled is True
+    assert notes == [] and installs == [] and steps == []
+    gate.set()
+    assert ha._wait_commands_idle()
+    assert notes == [("lounge", "Bins tonight"), (None, "Dinner is ready")]
+    assert installs == ["lounge"]
+    assert steps == [("lounge", 1)]
+    assert decks.get("morning").enabled is False
+
+
+def test_commands_for_a_display_run_in_the_order_sent(tmp_path: Path) -> None:
+    events: list[str] = []
+    ha, _client, pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(
+            notify_fn=lambda _d, m: events.append(f"notify {m}"),
+            step_device_fn=lambda _d, delta: events.append(f"step {delta}"),
+        ),
+    )
+    pm.latest_render_for.return_value = {"page_id": "home"}
+
+    def push(page_id: str, **kw):
+        events.append(f"push {page_id}{' refresh' if kw.get('force_publish') else ''}")
+        return PushResult(status="sent", page_id=page_id)
+
+    pm.push.side_effect = push
+    ha.start()
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/push", b"Weather")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/notify", b"hi")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"refresh")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"prev")
+    assert ha._wait_commands_idle()
+    assert events == ["push weather", "step 1", "notify hi", "push home refresh", "step -1"]
+
+
+@pytest.mark.parametrize("notify_all", [False, True])
+def test_notify_deadline_frees_command_worker_and_reports_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, notify_all: bool
+) -> None:
+    devices = _FakeRegistry([_FakeDevice("lounge", "Lounge")])
+    app = Flask(__name__)
+    ha, client, _, pages = _wire(
+        tmp_path,
+        devices=devices,
+        hooks=HaHooks(notify_fn=lambda device_id, msg: ha_hooks._notify(app, device_id, msg)),
+    )
+    manager = PushManager(
+        registry=MagicMock(),
+        page_store=pages,
+        transport=MagicMock(),
+        settings=SettingsStore(tmp_path / "settings.json"),
+        event_log=MagicMock(),
+        renders_dir=tmp_path / "renders",
+        base_url_fn=lambda: "http://lan.test:8000",
+    )
+    app.config.update(DEVICE_REGISTRY=devices, PUSH_MANAGER=manager)
+    monkeypatch.setattr(ha_hooks, "HA_PUSH_LOCK_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(ha_hooks, "render_notice", lambda *_args: b"notice")
+    ha.start()
+    manager._lock.acquire()
+    try:
+        if notify_all:
+            ha._on_notify_all_cmd(CMD_TOPIC_NOTIFY, b"Hello")
+        else:
+            ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/notify", b"Hello")
+        assert ha._wait_commands_idle(timeout=1)
+        error = _payload_for(client, "tesserae/ha/state/last_error")
+        assert error and error.startswith(b"Notify: Lounge:") and b"renderer busy" in error
+        assert _payload_for(client, "tesserae/ha/state/busy") == b"0"
+        assert manager._lock.locked()
+    finally:
+        manager._lock.release()
+        ha.stop()
+
+
+def test_queued_command_failures_reach_last_error(tmp_path: Path) -> None:
+    ha, client, pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(notify_fn=lambda _d, _m: "Lounge: render timed out"),
+    )
+    ha.start()
+    last = "tesserae/ha/state/last_error"
+    pm.push.return_value = PushResult(
+        status="superseded", page_id="weather", error="newer push for the same device took priority"
+    )
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/push", b"Weather")
+    assert ha._wait_commands_idle()
+    assert _payload_for(client, last) == b"Lounge: newer push for the same device took priority"
+    pm.push.return_value = PushResult(status="not_found", page_id="home", error="page not found")
+    ha._on_push_page_cmd("tesserae/ha/cmd/push_page", b"home")
+    assert ha._wait_commands_idle()
+    assert _payload_for(client, last) == b"Home: page not found"
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/notify", b"hi")
+    assert ha._wait_commands_idle()
+    assert _payload_for(client, last) == b"Notify: Lounge: render timed out"
+    pm.push.side_effect = RuntimeError("broker gone")
+    pm.latest_render_for.return_value = {"page_id": "home"}
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"refresh")
+    assert ha._wait_commands_idle()
+    assert _payload_for(client, last) == b"Lounge: failed"
+    assert _payload_for(client, "tesserae/ha/state/busy") == b"0"
+
+
+def test_queued_commands_skip_a_display_or_lineup_removed_meanwhile(tmp_path: Path) -> None:
+    decks, nav, settings = _stores(tmp_path)
+    decks.upsert(_deck())
+    registry = _FakeRegistry([_FakeDevice("lounge", "Lounge")])
+    ha, _client, pm, _ = _wire(
+        tmp_path,
+        devices=registry,
+        hooks=HaHooks(deck_store=decks, deck_nav_store=nav, settings_store=settings),
+    )
+    gate, started, order = _blocking_push(pm)
+    pm.latest_render_for.return_value = {"page_id": "home"}
+    ha.start()
+    ha._on_push_page_cmd("tesserae/ha/cmd/push_page", b"home")  # holds the worker
+    assert started.wait(5)
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"refresh")
+    ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"push")
+    del registry._d["lounge"]
+    decks.delete("morning")
+    gate.set()
+    assert ha._wait_commands_idle()
+    assert order == [("home", None)]  # nothing ran for the removed targets
+
+
+# ---------- command worker lifecycle and limits ----------
+
+
+def test_lineup_toggle_returns_at_once_while_invalidation_waits(tmp_path: Path) -> None:
+    # The reproduced stall: invalidating the lineup's warmed frames takes the
+    # push manager's render lock, so the OFF callback waited out a render.
+    import threading
+    import time
+
+    decks, _nav, settings = _stores(tmp_path)
+    decks.upsert(_deck())
+    gate = threading.Event()
+    ha, _client, _pm, _ = _wire(
+        tmp_path,
+        hooks=HaHooks(
+            deck_store=decks, settings_store=settings, invalidate_deck_fn=lambda _d: gate.wait(5)
+        ),
+    )
+    ha.start()
+    t0 = time.monotonic()
+    ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/enabled", b"OFF")
+    assert time.monotonic() - t0 < 0.5
+    gate.set()
+    assert ha._wait_commands_idle()
+    assert decks.get("morning").enabled is False
+
+
+def _gated_jobs(ha, labels: list[str], gate, done: list[str]) -> None:
+    for label in labels:
+
+        def job(label: str = label) -> str | None:
+            if label == labels[0]:
+                assert gate.wait(5)
+            done.append(label)
+            return None
+
+        ha._enqueue(label, job)
+
+
+def _worker_threads(before: set | None = None) -> list:
+    """Live command workers, minus those that existed at ``before``
+    (other tests' instances in this process)."""
+    import threading
+
+    return [
+        t
+        for t in threading.enumerate()
+        if t.name == "ha-discovery-commands" and t not in (before or set())
+    ]
+
+
+def test_stop_during_a_long_command_cancels_and_reports_the_queue(tmp_path: Path) -> None:
+    # A stop while a command overran used to strand the queued ones. Now
+    # they're cancelled explicitly and named on Last error, the stop does
+    # not wait for the running one, and the worker exits once it's done.
+    import threading
+
+    from app import ha_discovery as ha_module
+
+    ha, client, _pm, _ = _wire(tmp_path)
+    ha.start()
+    ha._command_time_limit_s = 0.1
+    gate, started, done = threading.Event(), threading.Event(), []
+
+    def first() -> str | None:
+        started.set()
+        assert gate.wait(5)
+        done.append("first")
+        return None
+
+    ha._enqueue("first", first)
+    assert started.wait(5)
+    for i in range(ha_module.COMMAND_QUEUE_MAX):
+        ha._enqueue(f"j{i}", lambda i=i: done.append(f"j{i}"))
+    worker = ha._command_worker
+    assert worker is not None and ha._commands.full()
+    threading.Event().wait(0.3)  # "first" is now over its time limit
+    ha._stop_command_worker()  # returns although "first" still runs
+    error = _payload_for(client, "tesserae/ha/state/last_error") or b""
+    assert error.startswith(b"Cancelled when Home Assistant discovery stopped: j0, j1")
+    gate.set()
+    worker.join(5)
+    assert not worker.is_alive() and ha._command_worker is None
+    assert done == ["first"]  # cancelled commands never ran
+    assert ha._commands.unfinished_tasks == 0
+
+
+def test_restart_during_a_stop_takes_the_worker_back(tmp_path: Path) -> None:
+    import threading
+
+    before = set(_worker_threads())
+    ha, _client, _pm, _ = _wire(tmp_path)
+    ha.start()
+    gate, done = threading.Event(), []
+    _gated_jobs(ha, ["first", "second"], gate, done)
+    for _ in range(50):  # until the worker is running "first"
+        if ha._running_job is not None:
+            break
+        threading.Event().wait(0.05)
+    old = ha._command_worker
+    ha._stop_command_worker()  # "first" still running; "second" cancelled
+    _gated_jobs(ha, ["third"], gate, done)  # started again before it exited
+    assert ha._command_worker is old
+    assert len(_worker_threads(before)) == 1
+    gate.set()
+    assert ha._wait_commands_idle()
+    assert done == ["first", "third"]
+
+
+def test_a_long_command_is_reported_without_spawning_threads(tmp_path: Path) -> None:
+    # Sol's case: every overrun used to spawn a replacement worker, and the
+    # stuck ones piled up (5 blocked threads). Now the watchdog only reports;
+    # one worker, later commands wait their turn.
+    import threading
+
+    before = set(_worker_threads())
+    ha, client, _pm, _ = _wire(tmp_path)
+    ha.start()
+    ha._command_time_limit_s = 0.1
+    gates = [threading.Event() for _ in range(5)]
+    done: list[int] = []
+    for i, gate in enumerate(gates):
+        ha._enqueue(f"Job {i}", lambda i=i, gate=gate: (gate.wait(5), done.append(i))[0] and None)
+    threading.Event().wait(0.5)
+    assert len(_worker_threads(before)) == 1
+    assert done == []
+    assert (_payload_for(client, "tesserae/ha/state/last_error") or b"").startswith(
+        b"Job 0: still running after"
+    )
+    for gate in gates:
+        gate.set()
+    assert ha._wait_commands_idle()
+    assert done == [0, 1, 2, 3, 4]
+    assert len(_worker_threads(before)) == 1
+
+
+def test_a_late_watchdog_never_reports_the_next_command(tmp_path: Path) -> None:
+    # Sol's case: the timer checked the worker, not the job, so one firing
+    # late spoke for (and handed off) the command after it.
+    import threading
+
+    ha, client, _pm, _ = _wire(tmp_path)
+    ha.start()
+    tokens: list[int | None] = []
+    gate = threading.Event()
+    ha._enqueue("First", lambda: tokens.append(ha._running_job) and None)
+    ha._enqueue("Second", lambda: (gate.wait(5), None)[1])
+    threading.Event().wait(0.3)  # "Second" is running now
+    before = _payload_for(client, "tesserae/ha/state/last_error")
+    ha._command_overran(tokens[0], "First")  # First's timer, firing late
+    assert _payload_for(client, "tesserae/ha/state/last_error") == before
+    worker = ha._command_worker
+    gate.set()
+    assert ha._wait_commands_idle()
+    assert ha._command_worker is worker
+
+
+def test_a_watchdog_firing_after_a_stop_leaves_last_error_alone(tmp_path: Path) -> None:
+    # Once discovery is stopped a newer publisher owns Last error: the
+    # overrun report of the command that is still finishing must only log.
+    import threading
+
+    ha, client, _pm, _ = _wire(tmp_path)
+    ha.start()
+    gate, started = threading.Event(), threading.Event()
+    tokens: list[int | None] = []
+
+    def job() -> str | None:
+        tokens.append(ha._running_job)
+        started.set()
+        assert gate.wait(5)
+        return None
+
+    ha._enqueue("Slow", job)
+    assert started.wait(5)
+    ha._command_overran(tokens[0], "Slow")  # not stopping: reported
+    assert (_payload_for(client, "tesserae/ha/state/last_error") or b"").startswith(
+        b"Slow: still running after"
+    )
+    client.published.clear()
+    ha._stop_command_worker()  # "Slow" is still running
+    ha._command_overran(tokens[0], "Slow")  # its timer fires after the stop
+    assert _payload_for(client, "tesserae/ha/state/last_error") is None
+    gate.set()
+    worker = ha._command_worker
+    if worker is not None:
+        worker.join(5)
+
+
+def test_the_command_time_limit_covers_a_slow_installs_push_now() -> None:
+    # Push now can legitimately wait out the warm budget, then the settle
+    # wait and the render lock for the entry page, then render: a limit
+    # below that trips the watchdog on a push that is only slow.
+    from app import ha_discovery as ha_module
+
+    assert (
+        ha_module.COMMAND_TIME_LIMIT_S
+        > ha_module.HA_WARM_BUDGET_S + ha_module.HA_SETTLE_MAX_S + ha_module.HA_PUSH_LOCK_TIMEOUT_S
+    )
+    assert ha_module.COMMAND_TIME_LIMIT_S >= 180.0
+
+
+def test_home_assistant_pushes_carry_deadlines(tmp_path: Path) -> None:
+    ha, client, pm, _ = _wire(tmp_path, devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]))
+    pm.push.return_value = PushResult(
+        status="busy", page_id="weather", error="another push kept the renderer busy for over 60s"
+    )
+    ha.start()
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/push", b"Weather")
+    assert ha._wait_commands_idle()
+    kwargs = pm.push.call_args.kwargs
+    assert kwargs["lock_timeout_s"] == 60.0 and kwargs["settle_max_s"] == 30.0
+    assert _payload_for(client, "tesserae/ha/state/last_error") == (
+        b"Lounge: another push kept the renderer busy for over 60s"
+    )
+
+
+def test_lineup_actions_bound_their_renderer_waits(tmp_path: Path) -> None:
+    import time
+
+    from app import ha_discovery as ha_module
+
+    decks, nav, settings = _stores(tmp_path)
+    decks.upsert(_deck(pages=[DeckPage(page_id=p) for p in ("home", "weather", "a", "b")]))
+    nav.set("lounge", "morning", "home")
+    ha, client, pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(
+            deck_store=decks,
+            deck_nav_store=nav,
+            settings_store=settings,
+            invalidate_deck_fn=lambda _d: "renderer busy; warmed frames for lounge not cleared",
+        ),
+    )
+
+    def slow_warm(_page: str, _device: str, *, lock_timeout_s: float) -> bool:
+        time.sleep(min(lock_timeout_s, 0.15))  # waits its whole share
+        return False
+
+    pm.warm_deck_page.side_effect = slow_warm
+    ha.start()
+    original = ha_module.HA_WARM_BUDGET_S
+    ha_module.HA_WARM_BUDGET_S = 0.2
+    try:
+        ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"push")
+        assert ha._wait_commands_idle()
+    finally:
+        ha_module.HA_WARM_BUDGET_S = original
+    # The budget ran out after two warms; the entry page still went out.
+    assert pm.warm_deck_page.call_count == 2
+    assert all(c.kwargs["lock_timeout_s"] <= 0.2 for c in pm.warm_deck_page.call_args_list)
+    assert pm.push.call_args.kwargs["lock_timeout_s"] == 60.0
+    ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"next")
+    assert ha._wait_commands_idle()
+    assert pm.promote_deck_page.call_args.kwargs == {"lock_timeout_s": 60.0}
+    ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/enabled", b"OFF")
+    assert ha._wait_commands_idle()
+    assert _payload_for(client, "tesserae/ha/state/last_error") == (
+        b"Morning: renderer busy; warmed frames for lounge not cleared"
+    )
+
+
+def test_stop_does_not_wait_for_a_command_in_progress(tmp_path: Path) -> None:
+    # stop() runs on a Settings save: a render that takes seconds must not
+    # hold the save up.
+    import threading
+    import time
+
+    ha, client, _pm, _ = _wire(tmp_path)
+    ha.start()
+    gate, started = threading.Event(), threading.Event()
+
+    def slow() -> str | None:
+        started.set()
+        assert gate.wait(10)
+        return "render failed"
+
+    ha._enqueue("Lounge", slow)
+    assert started.wait(5)
+    worker = ha._command_worker
+    assert worker is not None
+    t0 = time.monotonic()
+    ha.stop()
+    assert time.monotonic() - t0 < 1.0
+    assert worker.is_alive()  # still finishing its command in the background
+    gate.set()
+    worker.join(5)
+    assert not worker.is_alive() and ha._command_worker is None
+    # A publisher that has stopped leaves Busy / Last error to its successor.
+    assert b"render failed" not in (_payload_for(client, "tesserae/ha/state/last_error") or b"")
+
+
+def test_a_command_finishing_after_stop_is_logged_not_published(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+    import threading
+
+    ha, client, _pm, _ = _wire(tmp_path)
+    ha.start()
+    gate, started = threading.Event(), threading.Event()
+
+    def slow() -> str | None:
+        started.set()
+        assert gate.wait(10)
+        return "Lounge: b superseded"
+
+    ha._enqueue("Lounge", slow)
+    assert started.wait(5)
+    worker = ha._command_worker
+    assert worker is not None
+    ha.stop()
+    published = len(client.published)
+    with caplog.at_level(logging.WARNING, logger="app.ha_discovery"):
+        gate.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    assert len(client.published) == published  # nothing published after the stop
+    assert "Lounge: b superseded" in caplog.text

@@ -204,7 +204,10 @@ def test_push_page_command_calls_push(tmp_path: Path) -> None:
     pm.push.return_value = PushResult(status="sent", page_id="home")
     ha.start()
     ha._on_push_page_cmd(CMD_TOPIC_PUSH_PAGE, b"home")
-    pm.push.assert_called_once_with("home", source="home_assistant")
+    assert ha._wait_commands_idle()
+    pm.push.assert_called_once_with(
+        "home", source="home_assistant", lock_timeout_s=60.0, settle_max_s=30.0
+    )
     # Busy gets tipped on for the duration.
     assert b"1" in list(_payloads_for(client, STATE_TOPIC_BUSY))
 
@@ -329,6 +332,47 @@ def test_discovery_started_at_boot_has_the_button_service_hooks(tmp_path: Path) 
     ha.stop()
 
 
+def test_settings_save_does_not_wait_for_a_command_in_progress(app: Flask) -> None:
+    # Saving Settings rebuilds the transport and stops the running
+    # publisher; a command mid-render must not hold the response up.
+    import threading
+    import time
+
+    client = app.test_client()
+    _sign_in(client)
+    form = {
+        "base_url": "http://lan.test:8000",
+        "panel_w": "100",
+        "panel_h": "100",
+        "ha_discovery_enabled": "on",
+    }
+    client.post("/settings/app", data=form)
+    first = app.config["HA_DISCOVERY"]
+    assert first is not None
+    gate, started = threading.Event(), threading.Event()
+
+    def render() -> str | None:
+        started.set()
+        assert gate.wait(10)
+        return None
+
+    first._enqueue("Lounge", render)
+    assert started.wait(5)
+    worker = first._command_worker
+    assert worker is not None
+    t0 = time.monotonic()
+    client.post("/settings/app", data={**form, "base_url": "http://other.test:8000"})
+    assert time.monotonic() - t0 < 5.0  # the old stop() waited out the 10 s join
+    second = app.config["HA_DISCOVERY"]
+    assert second is not None and second is not first
+    assert first._started is False
+    assert worker.is_alive()  # still finishing its render in the background
+    gate.set()
+    worker.join(5)
+    assert not worker.is_alive()
+    second.stop()
+
+
 # -- Multi-head: per-display HA devices --------------------------------
 
 
@@ -367,7 +411,10 @@ def test_per_device_push_command_targets_single_display(tmp_path: Path) -> None:
     store.save(Page(id="m", name="Morning", panel=Panel(w=100, h=100), device_ids=["lounge"]))
     ha.start()
     ha._on_device_push_cmd("tesserae/ha/dev/lounge/cmd/push", b"Morning")
-    pm.push.assert_called_once_with("m", device_ids={"lounge"}, source="home_assistant")
+    assert ha._wait_commands_idle()
+    pm.push.assert_called_once_with(
+        "m", device_ids={"lounge"}, source="home_assistant", lock_timeout_s=60.0, settle_max_s=30.0
+    )
 
 
 def test_push_result_updates_per_device_state(tmp_path: Path) -> None:
