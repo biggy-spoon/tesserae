@@ -6,6 +6,14 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- A device kind or hardware entry can say `"buttons": false` when it has no
+  physical buttons. Its device page then has no button map (and no Controls
+  section at all if it has no touch panel either), and Home Assistant gets no
+  Input event entity for it, instead of an entity that can never fire. Kinds
+  that don't say anything are treated as before.
+
 ## [0.486.0], 2026-10-28
 
 ### Added
