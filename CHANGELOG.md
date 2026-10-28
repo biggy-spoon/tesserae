@@ -6,6 +6,25 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Two switches next to the Home Assistant discovery toggle, both on by
+  default: **Publish lineup controls to Home Assistant** (each lineup's
+  switch, Push now, Next and Previous, and the displays' Lineup picker)
+  and **Publish a button per dashboard to Home Assistant**. Turning one
+  off removes those entities from HA when you save; the Active dashboard
+  and per-display Dashboard pickers stay.
+
+### Fixed
+
+- Removing a Home Assistant display or lineup no longer removes the
+  entities of another whose id starts the same way (`kitchen` and
+  `kitchen_2`). Each entity is torn down by the display or lineup that
+  published it.
+- Home Assistant discovery that starts at boot now has the physical-button
+  service, so each display's *Input* event entity appears straight away
+  instead of after the next settings save.
+
 ## [0.486.0], 2026-10-28
 
 ### Added

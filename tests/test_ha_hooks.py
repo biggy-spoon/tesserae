@@ -357,3 +357,18 @@ def test_deck_store_notifies_listeners_on_upsert_and_delete(tmp_path: Path) -> N
     assert store.delete("d1") is False
     assert calls == ["hit", "hit"]
     store.remove_listener(calls.append)  # unknown callback is a no-op
+
+
+def test_publish_toggles_are_default_on_settings_fields() -> None:
+    for name in ("ha_discovery_lineup_controls", "ha_discovery_dashboard_buttons"):
+        field = next(f for f in APP_FIELDS if f["name"] == name)
+        assert field["type"] == "switch"
+        assert field["default"] is True
+        # Rendered in the same card as the discovery switch itself.
+        assert field["group"] == "network"
+    names = [f["name"] for f in APP_FIELDS]
+    first = names.index("ha_discovery_enabled")
+    assert names[first + 1 : first + 3] == [
+        "ha_discovery_lineup_controls",
+        "ha_discovery_dashboard_buttons",
+    ]

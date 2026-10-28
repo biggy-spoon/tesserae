@@ -640,3 +640,334 @@ def test_sweep_blanks_stale_lineup_configs(tmp_path: Path) -> None:
     assert "homeassistant/button/tesserae/lineup_gone_push/config" in blanked
     assert "homeassistant/button/tesserae/lineup_morning_push/config" not in blanked
     assert "homeassistant/switch/tesserae/automation/config" not in blanked
+
+
+# ---------- publish toggles ----------
+
+
+def _blanked(client: _FakeMqttClient) -> set[str]:
+    return {t for t, p, *_ in client.published if p == b""}
+
+
+_LINEUP_TOPICS = (
+    "homeassistant/switch/tesserae/lineup_morning/config",
+    "homeassistant/button/tesserae/lineup_morning_push/config",
+    "homeassistant/button/tesserae/lineup_morning_next/config",
+    "homeassistant/button/tesserae/lineup_morning_prev/config",
+    "homeassistant/select/tesserae/dev_lounge_lineup/config",
+)
+_PAGE_BUTTON_TOPICS = (
+    "homeassistant/button/tesserae/page_home/config",
+    "homeassistant/button/tesserae/page_weather/config",
+)
+_KEPT_TOPICS = (
+    "homeassistant/select/tesserae/active_page/config",
+    "homeassistant/select/tesserae/dev_lounge_dashboard/config",
+    "homeassistant/button/tesserae/dev_lounge_refresh/config",
+    "homeassistant/number/tesserae/dev_lounge_hold/config",
+    "homeassistant/switch/tesserae/automation/config",
+)
+
+
+def _toggle_rig(tmp_path: Path):
+    decks, nav, settings = _stores(tmp_path)
+    decks.upsert(_deck())
+    ha, client, _pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(
+            deck_store=decks,
+            deck_nav_store=nav,
+            settings_store=settings,
+            rotation_state_store=DeviceRotationStateStore(tmp_path / "rot.json"),
+        ),
+    )
+    return ha, client, settings
+
+
+def test_both_groups_publish_by_default(tmp_path: Path) -> None:
+    ha, client, _settings = _toggle_rig(tmp_path)
+    ha.start()
+    topics = set(_topics(client))
+    assert set(_LINEUP_TOPICS) <= topics
+    assert set(_PAGE_BUTTON_TOPICS) <= topics
+    assert set(_KEPT_TOPICS) <= topics
+
+
+def test_lineup_controls_off_blanks_them_live_and_back_on_republishes(tmp_path: Path) -> None:
+    ha, client, settings = _toggle_rig(tmp_path)
+    ha.start()
+    client.published.clear()
+
+    settings.patch_section("app", {"ha_discovery_lineup_controls": False})
+    ha.refresh_entity_configs()
+    assert set(_LINEUP_TOPICS) <= _blanked(client)
+    # Everything else stays: dashboard buttons, selects, hold.
+    assert not (set(_PAGE_BUTTON_TOPICS) | set(_KEPT_TOPICS)) & _blanked(client)
+    for topic in _PAGE_BUTTON_TOPICS + _KEPT_TOPICS:
+        assert _payload_for(client, topic) not in (None, b"")
+    # Nobody reads the lineup states now; they stop being published.
+    client.published.clear()
+    ha.refresh_state()
+    topics = _topics(client)
+    assert "tesserae/ha/lineup/morning/state/enabled" not in topics
+    assert "tesserae/ha/dev/lounge/state/lineup" not in topics
+
+    client.published.clear()
+    settings.patch_section("app", {"ha_discovery_lineup_controls": True})
+    ha.refresh_entity_configs()
+    for topic in _LINEUP_TOPICS:
+        assert _payload_for(client, topic) not in (None, b"")
+
+
+def test_dashboard_buttons_off_blanks_them_but_keeps_the_selects(tmp_path: Path) -> None:
+    ha, client, settings = _toggle_rig(tmp_path)
+    ha.start()
+    client.published.clear()
+
+    settings.patch_section("app", {"ha_discovery_dashboard_buttons": False})
+    ha.refresh_entity_configs()
+    assert set(_PAGE_BUTTON_TOPICS) <= _blanked(client)
+    assert not (set(_LINEUP_TOPICS) | set(_KEPT_TOPICS)) & _blanked(client)
+    select = json.loads(_payload_for(client, "homeassistant/select/tesserae/active_page/config"))
+    assert select["options"] == ["Home", "Weather"]
+
+    client.published.clear()
+    settings.patch_section("app", {"ha_discovery_dashboard_buttons": True})
+    ha.refresh_entity_configs()
+    for topic in _PAGE_BUTTON_TOPICS:
+        assert _payload_for(client, topic) not in (None, b"")
+
+
+def test_a_new_dashboard_gets_no_button_while_they_are_off(tmp_path: Path) -> None:
+    ha, client, settings = _toggle_rig(tmp_path)
+    settings.patch_section("app", {"ha_discovery_dashboard_buttons": False})
+    ha.start()
+    ha._page_store.save(Page(id="news", name="News", panel=Panel(w=800, h=480)))
+    assert "homeassistant/button/tesserae/page_news/config" not in _topics(client)
+
+
+def test_starting_with_both_off_publishes_neither_group(tmp_path: Path) -> None:
+    ha, client, settings = _toggle_rig(tmp_path)
+    settings.patch_section(
+        "app", {"ha_discovery_lineup_controls": False, "ha_discovery_dashboard_buttons": False}
+    )
+    ha.start()
+    topics = set(_topics(client))
+    assert not (set(_LINEUP_TOPICS) | set(_PAGE_BUTTON_TOPICS)) & topics
+    assert set(_KEPT_TOPICS) <= topics
+
+
+def test_settings_save_rebuild_honours_the_toggles(tmp_path: Path) -> None:
+    # A Settings -> Server save rebuilds the transport: the old publisher
+    # stops (blanking everything) and a fresh one starts from the saved
+    # values, which is how ha_discovery_enabled takes effect live too.
+    ha, client, settings = _toggle_rig(tmp_path)
+    ha.start()
+    settings.patch_section("app", {"ha_discovery_lineup_controls": False})
+    ha.stop()
+    assert set(_LINEUP_TOPICS) <= _blanked(client)
+    client.published.clear()
+    fresh = HomeAssistantDiscovery(
+        transport=ha._transport,
+        push_manager=ha._push_manager,
+        page_store=ha._page_store,
+        base_url_fn=lambda: "http://lan.test:8000",
+        device_registry=ha._devices,
+        hooks=ha._hooks,
+        state_refresh_s=0,
+    )
+    fresh.start()
+    topics = set(_topics(client))
+    assert not set(_LINEUP_TOPICS) & topics
+    assert set(_KEPT_TOPICS) <= topics
+
+
+def test_missing_or_unreadable_settings_publish_everything(tmp_path: Path) -> None:
+    decks, nav, _settings = _stores(tmp_path)
+    decks.upsert(_deck())
+    ha, client, _pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(deck_store=decks, deck_nav_store=nav),  # no settings store
+    )
+    ha.start()
+    assert set(_LINEUP_TOPICS) | set(_PAGE_BUTTON_TOPICS) <= set(_topics(client))
+
+    broken = MagicMock()
+    broken.get_section.side_effect = RuntimeError("settings unreadable")
+    ha2, client2, _pm2, _ = _wire(
+        tmp_path / "b",
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(deck_store=decks, deck_nav_store=nav, settings_store=broken),
+    )
+    ha2.start()
+    assert set(_LINEUP_TOPICS) | set(_PAGE_BUTTON_TOPICS) <= set(_topics(client2))
+
+
+def test_toggle_values_parse_like_switches(tmp_path: Path) -> None:
+    from app.ha_discovery import _switch_on
+
+    assert _switch_on({}, "k") is True
+    assert _switch_on({"k": None}, "k") is True
+    assert _switch_on({"k": False}, "k") is False
+    assert _switch_on({"k": 0}, "k") is False
+    assert _switch_on({"k": "off"}, "k") is False
+    assert _switch_on({"k": "false"}, "k") is False
+    assert _switch_on({"k": ""}, "k") is False
+    assert _switch_on({"k": "on"}, "k") is True
+    assert _switch_on({"k": "TRUE"}, "k") is True
+    assert _switch_on({"k": 1}, "k") is True
+
+
+def _feed_retained(ha: HomeAssistantDiscovery, retained: dict[str, dict]) -> None:
+    original_subscribe = ha._transport.subscribe
+
+    def subscribe(topic, cb, *, qos=1):
+        original_subscribe(topic, cb, qos=qos)
+        if topic.startswith("homeassistant/+/"):
+            for t, cfg in retained.items():
+                cb(t, json.dumps(cfg).encode())
+
+    ha._transport.subscribe = subscribe  # type: ignore[method-assign]
+
+
+def test_sweep_blanks_retained_entities_of_groups_switched_off(tmp_path: Path) -> None:
+    ha, client, settings = _toggle_rig(tmp_path)
+    settings.patch_section(
+        "app", {"ha_discovery_lineup_controls": False, "ha_discovery_dashboard_buttons": False}
+    )
+    hub = {"identifiers": ["tesserae"]}
+    lounge = {"identifiers": ["tesserae_dev_lounge"]}
+    _feed_retained(
+        ha,
+        {
+            "homeassistant/button/tesserae/page_home/config": {
+                "object_id": "tesserae_page_home",
+                "device": hub,
+            },
+            "homeassistant/switch/tesserae/lineup_morning/config": {
+                "object_id": "tesserae_lineup_morning",
+                "device": hub,
+            },
+            "homeassistant/select/tesserae/dev_lounge_lineup/config": {
+                "object_id": "tesserae_dev_lounge_lineup",
+                "device": lounge,
+            },
+            "homeassistant/select/tesserae/active_page/config": {
+                "object_id": "tesserae_active_page",
+                "device": hub,
+            },
+            "homeassistant/image/tesserae/dev_lounge_frame/config": {
+                "object_id": "tesserae_dev_lounge_frame",
+                "device": lounge,
+            },
+            "homeassistant/sensor/tesserae/dev_lounge_battery/config": {
+                "object_id": "tesserae_dev_lounge_battery",
+                "device": lounge,
+            },
+        },
+    )
+    ha._sweep_stale_retained()
+    blanked = _blanked(client)
+    assert "homeassistant/button/tesserae/page_home/config" in blanked
+    assert "homeassistant/switch/tesserae/lineup_morning/config" in blanked
+    assert "homeassistant/select/tesserae/dev_lounge_lineup/config" in blanked
+    assert "homeassistant/select/tesserae/active_page/config" not in blanked
+    assert "homeassistant/image/tesserae/dev_lounge_frame/config" not in blanked
+    assert "homeassistant/sensor/tesserae/dev_lounge_battery/config" not in blanked
+
+
+def test_sweep_keeps_lineup_buttons_only_while_they_can_act(tmp_path: Path) -> None:
+    decks, _nav, settings = _stores(tmp_path)
+    decks.upsert(_deck(device_ids=[]))  # no displays: switch only, no buttons
+    ha, client, _pm, _ = _wire(tmp_path, hooks=HaHooks(deck_store=decks, settings_store=settings))
+    hub = {"identifiers": ["tesserae"]}
+    _feed_retained(
+        ha,
+        {
+            "homeassistant/switch/tesserae/lineup_morning/config": {
+                "object_id": "tesserae_lineup_morning",
+                "device": hub,
+            },
+            "homeassistant/button/tesserae/lineup_morning_push/config": {
+                "object_id": "tesserae_lineup_morning_push",
+                "device": hub,
+            },
+        },
+    )
+    ha._sweep_stale_retained()
+    blanked = _blanked(client)
+    assert "homeassistant/button/tesserae/lineup_morning_push/config" in blanked
+    assert "homeassistant/switch/tesserae/lineup_morning/config" not in blanked
+
+
+# ---------- teardown with overlapping ids ----------
+
+
+def test_removing_a_display_spares_one_whose_id_extends_it(tmp_path: Path) -> None:
+    registry = _FakeRegistry([_FakeDevice("a", "A"), _FakeDevice("a_b", "A B")])
+    ha, client, _pm, _ = _wire(tmp_path, devices=registry)
+    ha.start()
+    ha.note_device_heartbeat("a_b", {"battery_pct": 50})
+    del registry._d["a"]
+    client.published.clear()
+    ha.refresh_entity_configs()
+    blanked = _blanked(client)
+    assert "homeassistant/image/tesserae/dev_a_frame/config" in blanked
+    assert not {t for t in blanked if "/dev_a_b_" in t}
+    assert ("sensor", "dev_a_b_battery") in ha._published_configs
+
+
+def test_deleting_a_lineup_spares_one_whose_id_extends_it(tmp_path: Path) -> None:
+    decks, _nav, settings = _stores(tmp_path)
+    decks.upsert(_deck(id="a", name="A"))
+    decks.upsert(_deck(id="a_b", name="A B"))
+    ha, client, _pm, _ = _wire(tmp_path, hooks=HaHooks(deck_store=decks, settings_store=settings))
+    ha.start()
+    client.published.clear()
+    decks.delete("a")
+    blanked = _blanked(client)
+    assert "homeassistant/switch/tesserae/lineup_a/config" in blanked
+    assert not {t for t in blanked if "/lineup_a_b" in t}
+
+
+def test_teardown_uses_recorded_ownership_not_object_ids(tmp_path: Path) -> None:
+    # ``a``'s Next change sensor is ``dev_a_next_change``, which reads like
+    # an entity of a display called ``a_next``; removing either display must
+    # take exactly its own entities.
+    scheduler = MagicMock()
+    scheduler.upcoming_for_device.return_value = []
+    registry = _FakeRegistry([_FakeDevice("a", "A"), _FakeDevice("a_next", "A next")])
+    ha, client, _pm, _ = _wire(tmp_path, devices=registry, hooks=HaHooks(scheduler=scheduler))
+    ha.start()
+    ha.note_device_heartbeat("a", {"battery_pct": 50})
+    ha.note_device_heartbeat("a_next", {"battery_pct": 60})
+    assert ha._config_owner[("sensor", "dev_a_next_change")] == "a"
+    assert ha._config_owner[("sensor", "dev_a_next_battery")] == "a_next"
+
+    del registry._d["a"]
+    client.published.clear()
+    ha.refresh_entity_configs()
+    blanked = _blanked(client)
+    assert "homeassistant/sensor/tesserae/dev_a_next_change/config" in blanked
+    assert "homeassistant/sensor/tesserae/dev_a_battery/config" in blanked
+    assert "homeassistant/image/tesserae/dev_a_next_frame/config" not in blanked
+    assert "homeassistant/sensor/tesserae/dev_a_next_battery/config" not in blanked
+    assert set(ha._config_owner.values()) == {"a_next"}
+
+
+def test_removing_the_longer_id_spares_the_shorter_ones_lookalikes(tmp_path: Path) -> None:
+    scheduler = MagicMock()
+    scheduler.upcoming_for_device.return_value = []
+    registry = _FakeRegistry([_FakeDevice("a", "A"), _FakeDevice("a_next", "A next")])
+    ha, client, _pm, _ = _wire(tmp_path, devices=registry, hooks=HaHooks(scheduler=scheduler))
+    ha.start()
+    del registry._d["a_next"]
+    client.published.clear()
+    ha.refresh_entity_configs()
+    blanked = _blanked(client)
+    assert "homeassistant/image/tesserae/dev_a_next_frame/config" in blanked
+    # ``a``'s own sensor survives although its id starts with ``dev_a_next_``.
+    assert "homeassistant/sensor/tesserae/dev_a_next_change/config" not in blanked
+    assert ("sensor", "dev_a_next_change") in ha._published_configs
