@@ -6,6 +6,16 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Hardware kind `lilygo_t5s3_pro` for the LILYGO T5 E-Paper S3 Pro and Pro Lite
+  (H752-01), a 4.7" 960x540 16-level greyscale panel on an ESP32-S3 with a
+  TPS65185 power path. The same glass and 259200-byte esp32_gray_bin frame as
+  the PaperS3, used landscape; firmware is the `lilygo-t5s3-pro` build in
+  tesserae-device-firmware, confirmed on real hardware by its contributor on a
+  Pro Lite. Not auto-selected from a relay self-report, since on the wire it
+  matches the PaperS3.
+
 ## [0.488.1], 2026-10-28
 
 ### Added
