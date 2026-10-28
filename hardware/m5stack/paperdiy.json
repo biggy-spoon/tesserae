@@ -1,0 +1,27 @@
+{
+  "tesserae_compat": "1.x",
+  "id": "m5stack_paperdiy",
+  "name": "M5Stack PaperDIY",
+  "vendor": "M5Stack",
+  "url": "https://docs.m5stack.com/en/core/PaperDIY_Complete_Kit",
+  "icon": "device-tablet",
+  "description": "4.7 inch 16-level greyscale ePaper kit (Complete Kit K159 and Assembly Kit): ESP32-S3-WROOM-1-N16R8 with 16 MB flash and 8 MB octal PSRAM, M5PM1 PMIC, 140 mAh cell, two user keys, 960x540 glass used landscape. The same ED047TC1 panel and parallel bus as the PaperS3, with the panel rail on the PMIC instead of a GPIO. Speaks Tesserae's v1 REST device API from the tesserae-device-firmware build (env m5stack-paperdiy) and paints the esp32_gray_bin 4-bpp greyscale frame straight onto the panel's parallel bus.",
+  "protocol": "esp32_client",
+  "renderers": [
+    "esp32_gray_bin"
+  ],
+  "panel": {
+    "w": 960,
+    "h": 540,
+    "orientation": "landscape",
+    "name": "4.7 inch ePaper (16-level greyscale, 960x540, landscape)",
+    "gamut": "gray_16",
+    "native_w": 960,
+    "native_h": 540
+  },
+  "refresh_floor_s": 60,
+  "image_format": "bin",
+  "touch": false,
+  "auto_select": false,
+  "notes_md": "Confirmed on real hardware by the firmware's contributor on one Complete Kit (tesserae-device-firmware PR #55, 2026-10-26 to 2026-10-28): the self-test paints 16 evenly spaced grey bands on the PMIC rail alone, the production build joins Wi-Fi, registers as this kind, paints a server-composed 960x540 frame upright on the glass, wakes from timer deep sleep on the server's interval, and both keys wake it from deep sleep and report themselves (KEY1 on GPIO4 is left, KEY2 on GPIO3 is right). Not yet measured: battery sag during a paint on the 140 mAh cell, and OTA on this board.\n\nWire format is exactly 259200 bytes (960*540/2), row-major from the top-left, high nibble = left pixel, 0x0 = black .. 0xF = white, byte-identical to `m5stack_papers3`. The board is used landscape and the firmware turns nothing on the device, so the composition is the same 960x540 as the glass and the frame packs straight through; for a portrait mount set the device's orientation in Settings -> Devices.\n\nNot auto-selected from a relay self-report: on the wire it reports the same protocol, gamut and geometry as the PaperS3, so it is only ever set by the firmware declaring it at register / discover, or by the operator.\n\nNo touch, buzzer, frontlight or partial refresh. The 140 mAh cell gives days of autonomy rather than weeks, so a long sleep interval matters more here than on the other M5Stack boards; the 60 s refresh floor is the PaperS3's and is worth revisiting once a duty cycle has been measured."
+}

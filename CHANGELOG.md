@@ -6,6 +6,18 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.486.0], 2026-10-28
+
+### Added
+
+- Hardware kind `m5stack_paperdiy` for the M5Stack PaperDIY (Complete Kit and
+  Assembly Kit), a 4.7" 960x540 16-level greyscale panel on an ESP32-S3 with
+  the M5PM1 PMIC and a 140 mAh cell. The same glass and 259200-byte
+  esp32_gray_bin frame as the PaperS3, used landscape; firmware is the
+  `m5stack-paperdiy` build in tesserae-device-firmware, confirmed on real
+  hardware by its contributor including both keys. Not auto-selected from a
+  relay self-report, since on the wire it matches the PaperS3.
+
 ## [0.485.0], 2026-10-28
 
 ### Changed
