@@ -6,6 +6,14 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Home Assistant's per-display *In quiet hours* sensor follows the server's
+  time zone. It read the time zone before it was set at startup, so on the
+  Docker image and the HA add-on (both UTC) it switched on and off by the
+  UTC clock, hours away from the configured window. Quiet hours themselves
+  were not affected.
+
 ### Changed
 
 - Form posts that arrive through a reverse proxy are now refused unless the
