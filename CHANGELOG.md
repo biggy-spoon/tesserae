@@ -8,6 +8,13 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ### Fixed
 
+- Two things saving the same device at once can no longer lose a change. A
+  device's file is read, patched and written back whole by many paths (a
+  rename, a transport switch, a token regeneration, quiet hours, a panel size
+  the device reports, a firmware-driven renderer switch). They now take turns,
+  and a save that read a device's file just before the device was removed can
+  no longer write it back.
+
 - Saving a device's button map, update delivery or synchronized wake, turning
   automatic firmware updates on or off, and removing a device now change only
   that one setting. Each used to copy the device's whole settings entry and
