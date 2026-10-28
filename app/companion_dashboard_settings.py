@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import copy
 import json
-import math
 from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
@@ -23,7 +22,16 @@ _SETTING_NAMES = frozenset(
     ("name", "icon", "device_ids", "refresh_minutes", "sleep_interval_s", "theme", "style", "font")
 )
 _TEXT_TYPES = frozenset(("string", "text", "textarea", "url", "password", "color"))
-_SUPPORTED_TYPES = _TEXT_TYPES | {"number", "integer", "boolean", "switch", "select", "multiselect"}
+_SUPPORTED_TYPES = _TEXT_TYPES | {
+    "number",
+    "integer",
+    "boolean",
+    "switch",
+    "select",
+    "multiselect",
+    "slider",
+    "location_search",
+}
 
 
 class InvalidSettings(ValueError):
@@ -156,7 +164,12 @@ def _empty(value: Any) -> bool:
 
 
 def response(
-    page: Page, *, can_edit: bool, options: dict[str, Any], registry: Any
+    page: Page,
+    *,
+    can_edit: bool,
+    options: dict[str, Any],
+    registry: Any,
+    native_controls: bool = False,
 ) -> dict[str, Any]:
     settings = {name: getattr(page, name) for name in _SETTING_NAMES}
     if page.layout_kind == "canvas" and page.canvas is not None:
@@ -172,7 +185,7 @@ def response(
         "can_edit": can_edit,
         "settings": settings,
         "options": options,
-        **Schema(page, registry).response(),
+        **Schema(page, registry, native_controls=native_controls).response(),
         "web_url": f"/pages/canvas/c/{quote(page.id, safe='')}/configure"
         if page.layout_kind == "canvas"
         else f"/pages/{quote(page.id, safe='')}",
@@ -214,7 +227,11 @@ def _validate_settings(
                 raise InvalidSettings(field, "Choose an available appearance option.")
 
 
-def _validate_input(spec: dict[str, Any], value: Any) -> None:
+def _validate_input(
+    spec: dict[str, Any], value: Any, *, previous_values: list[Any] | None = None
+) -> None:
+    from app.companion_native_controls import finite_number
+
     field, kind = f"inputs.{spec['name']}", spec["type"]
     if not spec["editable"]:
         raise InvalidSettings(field, "Edit this input in the web editor.")
@@ -223,12 +240,20 @@ def _validate_input(spec: dict[str, Any], value: Any) -> None:
             raise InvalidSettings(field, "This field is required.")
         if value is None:
             return
-    if kind in _TEXT_TYPES:
+    if kind == "color":
+        from app.companion_native_controls import valid_color
+
+        valid = valid_color(value)
+    elif kind == "location_search":
+        from app.companion_native_controls import valid_location
+
+        valid = valid_location(value, previous=previous_values)
+    elif kind in _TEXT_TYPES:
         valid = isinstance(value, str) and len(value) <= 16384
     elif kind == "integer":
-        valid = type(value) is int
-    elif kind == "number":
-        valid = type(value) is int or (type(value) is float and math.isfinite(value))
+        valid = type(value) is int and finite_number(value)
+    elif kind in ("number", "slider"):
+        valid = finite_number(value)
     elif kind in ("boolean", "switch"):
         valid = type(value) is bool
     elif kind == "select":
@@ -265,6 +290,7 @@ def apply_patch(
     options: dict[str, Any],
     device_ids: set[str],
     registry: Any,
+    native_controls: bool = False,
 ) -> Page:
     from app.companion_component_settings import Schema
 
@@ -273,7 +299,7 @@ def apply_patch(
         raise InvalidSettings("settings", "Settings must be a JSON object.")
     _validate_settings(settings, options, device_ids)
     try:
-        updated = Schema(page, registry).apply(body)
+        updated = Schema(page, registry, native_controls=native_controls).apply(body)
     except ValidationError:
         raise InvalidSettings(
             "inputs", "These values cannot be applied to this dashboard."

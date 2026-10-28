@@ -18,6 +18,9 @@ import pytest
 from ._schema import FIXTURES_DIR, SPEC, schema_for
 
 CASES = {
+    "dashboard-native-controls-response.json": "DashboardSettingsResponse",
+    "dashboard-native-controls-patch.json": "DashboardSettingsPatchRequest",
+    "dashboard-native-location-choices.json": "DashboardSettingsChoicesResponse",
     "dashboard-component-settings-response.json": "DashboardSettingsResponse",
     "dashboard-component-settings-patch.json": "DashboardSettingsPatchRequest",
     "dashboard-settings-choices-response.json": "DashboardSettingsChoicesResponse",

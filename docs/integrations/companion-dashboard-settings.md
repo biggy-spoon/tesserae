@@ -10,6 +10,12 @@ Declared `canvas.inputs` take priority over matching discovered fields and may
 control several targets. The full layout, widget code and CSS remain in the web
 editor.
 
+`dashboard_native_controls` adds conditional visibility, numeric sliders,
+structured locations and colors. Clients opt in with
+`X-Tesserae-Dashboard-Controls: 1` on settings GET/PATCH and field choices GET.
+Without that header, fields requiring these controls retain their previous
+read-only behavior. Existing permissions and explicit Save still apply.
+
 Enable **Edit dashboard settings** for the paired app in **Settings → Companion**.
 This optional `dashboards:write` scope is not granted by pairing or by upgrading
 an existing server. `dashboards:read` allows reading settings, with `can_edit`
@@ -40,6 +46,12 @@ includes them.
   permissions. Secret fields are never exposed by this route. Omitting
   `schema_revision` resolves choices against the current schema; supplying an
   outdated revision returns `409 schema_conflict`.
+  For a native `location_search` field, `q` searches a fixed Open-Meteo
+  geocoding endpoint (five-second timeout, bounded response, at most ten
+  results). An empty/one-character query does no networking. A literal
+  `latitude,longitude` pair resolves locally, including when the geocoder is
+  unavailable. Choices carry a canonical location object as `value`; provider
+  failure remains a safe `status: unavailable`, distinct from no matches.
 - The revision covers the entire dashboard, including advanced edits from the
   web editor or MCP. The check and write share the page store's lock. A changed
   revision returns `409 revision_conflict`; reload and review changes before
@@ -78,7 +90,8 @@ Sending a value replaces it. Sending a whole header-map input replaces that map,
 so removed headers do not survive the update.
 
 Supported component types are `string`, `text`, `textarea`, `url`, `password`,
-`integer`, `number`, `boolean`, `switch`, `select` and `multiselect`. Numbers and
+`integer`, `number`, `boolean`, `switch`, `select` and `multiselect`. Native opt-in
+also supports `slider`, `location_search` and `color`. Numbers and
 booleans are JSON values, not strings. Select choices retain their declared JSON
 value types. Multiselect array order is preserved, including media-player
 priority; duplicates are rejected. Selected values removed from the provider may
@@ -86,11 +99,50 @@ be retained or reordered, while new values must still be available. Dynamic
 provider failures return a generic retry message without credentials or provider
 exception details. Duplicate input names appear once as a read-only field; fix the declarations in
 the web editor before editing them in Companion. Saving other settings preserves
-the original declarations. Location search, sliders, native colors and fields
-with conditional `show_if` rules remain read-only. Unknown types,
+the original declarations. Unknown types,
 non-text secret fields and inputs with unresolved targets return
 `editable: false` and can be opened in the web editor. Secret fields never expose
 their choice values or labels.
+
+## Native field behavior
+
+- `visibility_conditions` is an AND-list of `{field_id, expected}` entries.
+  IDs refer to public fields in the same settings response, including declared
+  inputs covering a controller's underlying target. An expected scalar is an
+  equality, an array is any-of, and `{not: scalar-or-array}` negates it.
+  Comparison uses web-form text (`null` is empty, booleans are `true`/`false`,
+  integral floats compare like integers); a multiselect matches any selected
+  value. A field whose controller is hidden is hidden too. `visible` reports
+  the saved-state result; the client reevaluates against its complete draft.
+  Missing, cyclic, private or mixed controllers leave an explanatory, visible
+  read-only field rather than guessing or revealing private comparison values.
+- Hiding keeps stored values and the client's unsaved draft. Submit only edits
+  visible in the final draft. The server validates visibility after applying
+  the complete candidate patch, so enabling a controller and editing its child
+  in one request works. Explicit writes/resets to hidden fields are rejected
+  atomically; saving the controller alone preserves the hidden child.
+- Sliders return `minimum`, `maximum`, `step` and an optional display-only
+  `unit`. The default range/step is 0–100 by 1, matching web controls. Values are
+  finite JSON numbers and must satisfy every target's range and step. Shared
+  inputs intersect compatible ranges; incompatible step grids stay read-only.
+- A location is an object with finite `latitude` (-90–90) and `longitude`
+  (-180–180), optional `name`, `country`, `admin1`, and an optional valid IANA
+  `timezone`. `{}` or null clears an optional location; reset removes its
+  override. No timezone is inferred from manual coordinates. Existing metadata
+  keys may be retained while editing coordinates only if their values are
+  unchanged on every target; new/changed unknown keys are rejected. Omitted
+  fields and unchanged legacy place strings remain intact.
+- Colors accept CSS hex/name/rgb/rgba/hsl/hsla colors, transparent/currentColor
+  and CSS inheritance values, plus `var(--theme-token)` and a valid-color fallback. URLs
+  and CSS declarations are rejected. The raw string is retained rather than
+  normalizing theme expressions or existing legacy values merely on opening or
+  saving a different field. The client may show a picker for representable
+  colors and exact text input for expressions.
+
+Place names typed into search are sent by the server to Open-Meteo; coordinate
+entry needs no geocoding request. The lookup route is scoped to a Dashboard
+field and uses `dashboards:read`; it does not expose general URL fetching or
+grant access to plugin settings, credentials, layout or code.
 
 Saving updates the dashboard and changes its content-keyed preview cache token;
 it does not push a frame. Companion can request the refreshed preview and invoke

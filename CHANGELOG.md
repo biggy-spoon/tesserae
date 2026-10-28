@@ -6,6 +6,13 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Companion supports conditional Dashboard fields, sliders with exact numeric
+  input, place search and coordinate entry, and native color editing. The
+  optional native-controls header preserves older clients' read-only behavior;
+  hidden saved values, opaque field scopes and revision checks remain intact.
+
 ## [0.486.0], 2026-10-28
 
 ### Added
