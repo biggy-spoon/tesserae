@@ -330,6 +330,10 @@ def _flash_save(ok: bool, message: str) -> Response:
         return jsonify({"ok": ok, "message": message})
     flash(message, "ok" if ok else "error")
     page_id = (request.view_args or {}).get("page_id")
+    # The dashboards list posts its cadence forms with ``return_to=list``:
+    # changing a wake interval there must not throw the user into the editor.
+    if request.form.get("return_to") == "list":
+        return redirect(url_for("pages.index"))
     if page_id:
         return redirect(url_for("pages.edit", page_id=page_id))
     return redirect(request.referrer or url_for("pages.index"))

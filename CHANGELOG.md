@@ -6,6 +6,14 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.486.1], 2026-10-28
+
+### Fixed
+
+- Changing a dashboard's content-update cadence or device wake-up interval
+  from the Dashboards list stays on the list. The save used to redirect into
+  that dashboard's editor. (reported on tesserae-widget-underway#2)
+
 ## [0.486.0], 2026-10-28
 
 ### Added
