@@ -1,0 +1,12 @@
+{# Discover UI fonts before the stylesheets. Keep these URLs identical to
+   the @font-face sources so the CSS reuses the anonymous preload. The
+   wordmark uses Inter in both designs; preload only the active design's
+   common text/heading weights and regular monospace face otherwise. #}
+{% set _ui_font_files = ['inter/700.woff2'] + (
+  ['archivo/400.woff2', 'archivo/700.woff2', 'archivo/800.woff2', 'martian_mono/400.woff2']
+  if _paper else
+  ['inter/400.woff2', 'inter/800.woff2', 'jetbrains-mono/400.woff2']
+) %}
+{% for _font_file in _ui_font_files %}
+<link rel="preload" href="{{ url_for('plugins.plugin_asset', plugin_id='fonts_core', asset='static/' ~ _font_file) }}" as="font" type="font/woff2" crossorigin>
+{% endfor %}

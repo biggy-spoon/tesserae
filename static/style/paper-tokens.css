@@ -2,24 +2,25 @@
  * Paper design tokens and fonts, split out of paper.css so a standalone page
  * (the canvas editor) can take the Paper palette without the admin-shell rules
  * that paper.css applies to every element. Inert unless <html data-ui="paper">;
- * the fonts only download when a rule uses them.
+ * UI family aliases keep the canvas's content fonts independent. Fonts
+ * arriving after initial layout stay on the fallback for that page view.
  */
 
 /* ----- Fonts (bundled with fonts_core, OFL) -------------------------- */
 
-@font-face { font-family: "Archivo"; font-style: normal; font-weight: 400; font-display: swap;
+@font-face { font-family: "Tesserae UI Archivo"; font-style: normal; font-weight: 400; font-display: optional;
   src: url("../../plugins/fonts_core/static/archivo/400.woff2") format("woff2"); }
-@font-face { font-family: "Archivo"; font-style: normal; font-weight: 500; font-display: swap;
+@font-face { font-family: "Tesserae UI Archivo"; font-style: normal; font-weight: 500; font-display: optional;
   src: url("../../plugins/fonts_core/static/archivo/400.woff2") format("woff2"); }
-@font-face { font-family: "Archivo"; font-style: normal; font-weight: 600; font-display: swap;
+@font-face { font-family: "Tesserae UI Archivo"; font-style: normal; font-weight: 600; font-display: optional;
   src: url("../../plugins/fonts_core/static/archivo/700.woff2") format("woff2"); }
-@font-face { font-family: "Archivo"; font-style: normal; font-weight: 700; font-display: swap;
+@font-face { font-family: "Tesserae UI Archivo"; font-style: normal; font-weight: 700; font-display: optional;
   src: url("../../plugins/fonts_core/static/archivo/700.woff2") format("woff2"); }
-@font-face { font-family: "Archivo"; font-style: normal; font-weight: 800; font-display: swap;
+@font-face { font-family: "Tesserae UI Archivo"; font-style: normal; font-weight: 800; font-display: optional;
   src: url("../../plugins/fonts_core/static/archivo/800.woff2") format("woff2"); }
-@font-face { font-family: "Martian Mono"; font-style: normal; font-weight: 400; font-display: swap;
+@font-face { font-family: "Tesserae UI Martian Mono"; font-style: normal; font-weight: 400; font-display: optional;
   src: url("../../plugins/fonts_core/static/martian_mono/400.woff2") format("woff2"); }
-@font-face { font-family: "Martian Mono"; font-style: normal; font-weight: 700; font-display: swap;
+@font-face { font-family: "Tesserae UI Martian Mono"; font-style: normal; font-weight: 700; font-display: optional;
   src: url("../../plugins/fonts_core/static/martian_mono/700.woff2") format("woff2"); }
 
 /* ----- Tokens -------------------------------------------------------- */
@@ -82,8 +83,8 @@
   --t-code-border: #E0DACD;
   --t-code-key: #2B4E9B;
 
-  --t-font: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --t-font-mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --t-font: "Tesserae UI Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --t-font-mono: "Tesserae UI Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --t-font-features: normal;
 
   --t-radius-sm: 2px;

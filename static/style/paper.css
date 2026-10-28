@@ -837,16 +837,13 @@
 
 /* ----- Motion -------------------------------------------------------- */
 
-@keyframes paper-enter {
-  from { opacity: 0; transform: translateX(14px); }
-  to   { opacity: 1; transform: none; }
-}
-:root[data-ui="paper"] main.page { animation: paper-enter 360ms var(--p-ease) backwards; }
+/* Keep page text at its final position from first paint. Translating the
+   whole page on every navigation changed glyph rasterization at fractional
+   pixels even when the fonts were already cached. */
 :root[data-ui="paper"] .card,
 :root[data-ui="paper"] .dx-dashboard-card { transition: transform 220ms var(--p-ease), border-color 180ms ease-out; }
 
 @media (prefers-reduced-motion: reduce) {
-  :root[data-ui="paper"] main.page { animation: none; }
   :root[data-ui="paper"] .topnav,
   :root[data-ui="paper"] .brand-mark,
   .ui-switch-track,
