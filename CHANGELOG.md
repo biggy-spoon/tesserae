@@ -6,6 +6,14 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Saving a device's button map, update delivery or synchronized wake, turning
+  automatic firmware updates on or off, and removing a device now change only
+  that one setting. Each used to copy the device's whole settings entry and
+  write it back, which could undo something saved on the same device a moment
+  earlier by another request.
+
 ## [0.486.1], 2026-10-28
 
 ### Fixed
