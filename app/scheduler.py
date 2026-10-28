@@ -40,7 +40,7 @@ from pydantic import ValidationError
 
 from app import background_loops
 from app.plugin_loader import PluginRegistry
-from app.push import PushManager, PushResult
+from app.push import DELIVERED_STATUSES, PushManager, PushResult
 from app.scheduled_refresh import ScheduledPlacement, scheduled_placements
 from app.scheduler_conditions import ConditionEvaluator
 from app.state.deck_migration import deck_to_schedule
@@ -1298,8 +1298,8 @@ class Scheduler:
                         respect_quiet_hours=True,
                         source="deck",
                     )
-                    if result.status == "failed":
-                        continue  # retry next tick; nav untouched
+                    if result.status not in DELIVERED_STATUSES:
+                        continue  # the panel didn't move: retry next tick, nav untouched
                 self._deck_nav_store.set(device_id, deck.id, home)
                 logger.info(
                     "deck home return: device=%s deck=%s -> %s (%s)",
@@ -1381,7 +1381,13 @@ class Scheduler:
             and deck.device_ids
         ):
             device_filter = set(deck.device_ids)
-        self._fire(schedule, now, respect_quiet_hours=True, device_ids=device_filter)
+        self._fire(
+            schedule,
+            now,
+            respect_quiet_hours=True,
+            device_ids=device_filter,
+            nav_deck=deck if device_filter is not None else None,
+        )
 
     def _fire_deck_advance(
         self,
@@ -1450,29 +1456,32 @@ class Scheduler:
                 result = pusher.push(
                     target, device_ids={device_id}, respect_quiet_hours=True, source="deck"
                 )
-                if result.status == "failed":
-                    # Retry next tick; don't record the transition. Surface
-                    # it though: a page that fails every time its window
-                    # comes round leaves the panel holding the previous one,
-                    # which reads as "the deck skips that dashboard" rather
-                    # than "that dashboard won't render" (#167).
+                if result.status not in DELIVERED_STATUSES:
+                    # Retry next tick; don't record the transition (or the
+                    # nav position: the panel is still on its previous
+                    # page). Surface it though: a page that fails every time
+                    # its window comes round leaves the panel holding the
+                    # previous one, which reads as "the deck skips that
+                    # dashboard" rather than "that dashboard won't render"
+                    # (#167).
+                    reason = result.error or f"push {result.status}"
                     logger.warning(
                         "deck timer advance failed: device=%s deck=%s -> %s (%s)",
                         device_id,
                         deck.id,
                         target,
-                        result.error or "push failed",
+                        reason,
                     )
                     if self._event_log is not None:
                         self._event_log.record(
                             type="deck",
                             source="deck",
                             target=deck.id,
-                            status="failed",
+                            status="failed" if result.status == "failed" else str(result.status),
                             extra={
                                 "timer_advance_device": device_id,
                                 "page_id": target,
-                                "error": result.error or "push failed",
+                                "error": reason,
                             },
                         )
                     continue
@@ -2329,6 +2338,34 @@ class Scheduler:
             for sid in enabled_ids:
                 self._first_seen.setdefault(sid, now.timestamp())
 
+    def _record_trigger_nav(
+        self, deck: Deck, page_id: str, result: PushResult, candidates: set[str]
+    ) -> None:
+        """After a daily / interval lineup fire, record the lineup and page
+        as each display's nav position, but only for the displays the frame
+        actually reached, and only for a page of the lineup (a conditions
+        fallback page outside it leaves the record alone)."""
+        if self._deck_nav_store is None or page_id not in deck.page_ids:
+            return
+        if result.status not in DELIVERED_STATUSES:
+            return
+        reached: set[str] = set()
+        renderers = getattr(result, "renderers", None)
+        for row in renderers if isinstance(renderers, list) else []:
+            renderer_id = str(getattr(row, "renderer_id", ""))
+            if getattr(row, "error", None) is None and "__" in renderer_id:
+                reached.add(renderer_id.split("__", 1)[1])
+        if not reached:
+            # No per-display rows to go by: every candidate the quiet-hours
+            # filter would have let through.
+            quiet = getattr(self._push_factory(), "device_in_quiet_hours", None)
+            reached = {d for d in candidates if not (callable(quiet) and quiet(d) is True)}
+        for device_id in sorted(reached & candidates):
+            try:
+                self._deck_nav_store.set(device_id, deck.id, page_id)
+            except Exception:
+                logger.exception("trigger lineup nav: recording %s failed", device_id)
+
     def _fire(
         self,
         schedule: Schedule,
@@ -2337,6 +2374,7 @@ class Scheduler:
         respect_quiet_hours: bool = False,
         bypass_conditions: bool = False,
         device_ids: set[str] | None = None,
+        nav_deck: Deck | None = None,
     ) -> PushResult:
         # Conditional-schedule gate (v0.48). Evaluated before the push
         # so a held schedule incurs zero rendering cost. ``fire_now``
@@ -2390,6 +2428,11 @@ class Scheduler:
         if device_ids is not None:
             push_kwargs["device_ids"] = device_ids
         result = self._push_factory().push(target_page, **push_kwargs)
+        # A bound trigger lineup's fire is a lineup advance: record the nav
+        # position, so Next / Previous step from what this fire put on the
+        # glass.
+        if nav_deck is not None and device_ids:
+            self._record_trigger_nav(nav_deck, target_page, result, set(device_ids))
         # Successful fires bump last_fired so the daily / interval gates
         # work; a failed push doesn't update it (the next tick can retry).
         # A ``quiet`` result also bumps it, every device was in quiet

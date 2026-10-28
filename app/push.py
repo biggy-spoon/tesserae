@@ -276,6 +276,12 @@ PushStatus = Literal[
     "sent", "busy", "failed", "not_found", "quiet", "held", "superseded", "no_change", "unbound"
 ]
 
+# Outcomes where the frame reached (or was already on) the panel. Anything
+# else (failed, superseded, not_found, quiet, held, busy, unbound) left the
+# panel where it was, so a caller that records "the panel is now on page X"
+# (lineup navigation) must only do so for these.
+DELIVERED_STATUSES: frozenset[str] = frozenset({"sent", "no_change"})
+
 # Max bytes we'll pull from a remote image URL (Send-page Image URL tab).
 # Larger downloads are rejected before going through Pillow.
 _MAX_REMOTE_IMAGE_BYTES: int = 16 * 1024 * 1024

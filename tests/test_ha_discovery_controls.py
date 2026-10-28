@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.ha_discovery import (
     CMD_TOPIC_AUTOMATION,
     CMD_TOPIC_NOTIFY,
@@ -259,6 +261,27 @@ def test_lineup_next_and_prev_step_through_pages(tmp_path: Path) -> None:
     ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"prev")
     assert pm.push.call_args.args[0] == "home"
     assert nav.get("lounge")["page_id"] == "home"
+
+
+@pytest.mark.parametrize("status", ["superseded", "busy", "held", "not_found"])
+def test_lineup_step_records_a_position_only_when_the_page_was_delivered(
+    tmp_path: Path, status: str
+) -> None:
+    decks, nav, settings = _stores(tmp_path)
+    decks.upsert(_deck())
+    nav.set("lounge", "morning", "home")
+    ha, _client, pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(deck_store=decks, deck_nav_store=nav, settings_store=settings),
+    )
+    ha.start()
+    pm.push.return_value = PushResult(status=status, page_id="weather")
+    ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"next")
+    assert nav.get("lounge")["page_id"] == "home"  # the glass never moved
+    pm.push.return_value = PushResult(status="no_change", page_id="weather")
+    ha._on_lineup_cmd("tesserae/ha/lineup/morning/cmd/action", b"next")
+    assert nav.get("lounge")["page_id"] == "weather"
 
 
 # ---------- per-display lineup select ----------
@@ -993,3 +1016,200 @@ def test_removing_the_longer_id_spares_the_shorter_ones_lookalikes(tmp_path: Pat
     # ``a``'s own sensor survives although its id starts with ``dev_a_next_``.
     assert "homeassistant/sensor/tesserae/dev_a_next_change/config" not in blanked
     assert ("sensor", "dev_a_next_change") in ha._published_configs
+
+
+# ---------- per-display next / previous ----------
+
+
+def _steps_hook(calls: list[tuple[str, int]], err: str | None = None):
+    def step(device_id: str, delta: int) -> str | None:
+        calls.append((device_id, delta))
+        return err
+
+    return step
+
+
+def test_next_prev_buttons_published_on_the_display_with_a_step_hook(tmp_path: Path) -> None:
+    ha, client, _pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(step_device_fn=_steps_hook([])),
+    )
+    ha.start()
+    nxt = json.loads(_payload_for(client, "homeassistant/button/tesserae/dev_lounge_next/config"))
+    prv = json.loads(_payload_for(client, "homeassistant/button/tesserae/dev_lounge_prev/config"))
+    assert nxt["name"] == "Next" and prv["name"] == "Previous"
+    assert nxt["command_topic"] == prv["command_topic"] == "tesserae/ha/dev/lounge/cmd/action"
+    assert (nxt["payload_press"], prv["payload_press"]) == ("next", "prev")
+    assert nxt["unique_id"] == "tesserae_dev_lounge_next"
+    assert nxt["device"]["identifiers"] == ["tesserae_dev_lounge"]
+
+
+def test_next_prev_buttons_absent_without_the_hook(tmp_path: Path) -> None:
+    ha, client, _pm, _ = _wire(tmp_path, devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]))
+    ha.start()
+    topics = _topics(client)
+    assert "homeassistant/button/tesserae/dev_lounge_next/config" not in topics
+    assert "homeassistant/button/tesserae/dev_lounge_prev/config" not in topics
+    # The refresh button needs no hook and is still there.
+    assert "homeassistant/button/tesserae/dev_lounge_refresh/config" in topics
+
+
+def test_next_prev_commands_route_to_the_hook(tmp_path: Path) -> None:
+    calls: list[tuple[str, int]] = []
+    ha, client, _pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(step_device_fn=_steps_hook(calls)),
+    )
+    ha.start()
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b" prev\n")
+    assert calls == [("lounge", 1), ("lounge", -1)]
+    # Busy is cleared even when nothing pushed (a promoted warm frame).
+    assert _payload_for(client, "tesserae/ha/state/busy") == b"0"
+
+
+def test_next_prev_ignore_junk_and_unknown_displays(tmp_path: Path) -> None:
+    calls: list[tuple[str, int]] = []
+    ha, _client, pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(step_device_fn=_steps_hook(calls)),
+    )
+    ha.start()
+    for junk in (b"", b"NEXT", b"next please", b"\xff\xfenext", b"nex", b"previous", b"1"):
+        ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", junk)
+    ha._on_device_cmd("tesserae/ha/dev/ghost/cmd/action", b"next")  # unknown / deleted
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/next", b"next")  # wrong leaf
+    ha._on_device_cmd("tesserae/ha/devlounge/cmd/action", b"next")  # malformed topic
+    assert calls == []
+    pm.push.assert_not_called()
+
+
+def test_step_error_and_exception_land_on_last_error(tmp_path: Path) -> None:
+    calls: list[tuple[str, int]] = []
+    ha, client, _pm, _ = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(step_device_fn=_steps_hook(calls, err="Lounge: render failed")),
+    )
+    ha.start()
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
+    assert _payload_for(client, "tesserae/ha/state/last_error") == b"Lounge: render failed"
+
+    def boom(_device_id: str, _delta: int) -> str | None:
+        raise RuntimeError("nope")
+
+    ha._hooks.step_device_fn = boom
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"prev")  # must not raise
+    assert _payload_for(client, "tesserae/ha/state/last_error") == b"Lounge: step failed"
+    assert _payload_for(client, "tesserae/ha/state/busy") == b"0"
+
+
+def test_next_steps_only_the_pressed_display_through_the_button_service(
+    tmp_path: Path,
+) -> None:
+    from app.button_service import ButtonService
+    from app.state.legacy_projections import RotationProjection
+
+    decks, nav, settings = _stores(tmp_path)
+    decks.upsert(_deck(device_ids=["lounge", "hall"]))
+    nav.set("lounge", "morning", "home")
+    nav.set("hall", "morning", "home")
+    holder: dict[str, ButtonService] = {}
+
+    def step(device_id: str, delta: int) -> str | None:
+        holder["svc"].step(device_id=device_id, forward=delta > 0)
+        return None
+
+    ha, client, pm, page_store = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge"), _FakeDevice("hall", "Hall")]),
+        hooks=HaHooks(
+            deck_store=decks, deck_nav_store=nav, settings_store=settings, step_device_fn=step
+        ),
+    )
+    holder["svc"] = ButtonService(
+        rotation_store=RotationProjection(decks),
+        state_store=DeviceRotationStateStore(tmp_path / "rot.json"),
+        settings_store=settings,
+        page_store=page_store,
+        push_manager=pm,
+        deck_store=decks,
+        deck_nav_store=nav,
+    )
+    ha.start()
+    ha._on_device_cmd("tesserae/ha/dev/lounge/cmd/action", b"next")
+    assert pm.push.call_args.args[0] == "weather"
+    assert pm.push.call_args.kwargs["device_ids"] == {"lounge"}
+    assert pm.push.call_args.kwargs["source"] == "home_assistant"
+    assert nav.current_page("lounge", "morning") == "weather"
+    assert nav.current_page("hall", "morning") == "home"
+    # The pressed display's state was republished; it still follows Morning.
+    assert _payload_for(client, "tesserae/ha/dev/lounge/state/lineup") == b"Morning"
+
+
+def test_lineup_select_and_next_prev_agree_on_the_followed_lineup(tmp_path: Path) -> None:
+    from app.button_service import ButtonService
+    from app.state.legacy_projections import RotationProjection
+
+    decks, nav, settings = _stores(tmp_path)
+    decks.upsert(_deck(id="breakfast", name="Breakfast"))
+    decks.upsert(_deck(id="dinner", name="Dinner"))
+    decks.upsert(_deck(id="late", name="Late", enabled=False))
+    ha, _client, pm, page_store = _wire(
+        tmp_path,
+        devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]),
+        hooks=HaHooks(deck_store=decks, deck_nav_store=nav, settings_store=settings),
+    )
+    svc = ButtonService(
+        rotation_store=RotationProjection(decks),
+        state_store=DeviceRotationStateStore(tmp_path / "rot.json"),
+        settings_store=settings,
+        page_store=page_store,
+        push_manager=pm,
+        deck_store=decks,
+        deck_nav_store=nav,
+    )
+
+    def both() -> tuple[str | None, str | None]:
+        a, b = ha._lineup_for_device("lounge"), svc.following_deck("lounge")
+        return (a.id if a else None, b.id if b else None)
+
+    assert both() == ("breakfast", "breakfast")  # no nav record: first enabled
+    nav.set("lounge", "dinner", "home")
+    assert both() == ("dinner", "dinner")  # the one on the glass
+    nav.set("lounge", "late", "home")  # picked through the Lineup select
+    assert both() == ("late", "late")
+    decks.upsert(_deck(id="late", name="Late", enabled=False, device_ids=[]))
+    assert both() == ("breakfast", "breakfast")  # no longer binds the display
+
+
+def test_sweep_blanks_retained_next_prev_when_the_hook_is_gone(tmp_path: Path) -> None:
+    ha, client, _pm, _ = _wire(tmp_path, devices=_FakeRegistry([_FakeDevice("lounge", "Lounge")]))
+    lounge = {"identifiers": ["tesserae_dev_lounge"]}
+    _feed_retained(
+        ha,
+        {
+            "homeassistant/button/tesserae/dev_lounge_next/config": {
+                "object_id": "tesserae_dev_lounge_next",
+                "device": lounge,
+            },
+            "homeassistant/button/tesserae/dev_lounge_refresh/config": {
+                "object_id": "tesserae_dev_lounge_refresh",
+                "device": lounge,
+            },
+            # Its scheduler hook is missing too, but at boot that only means
+            # the scheduler isn't built yet: the entity must survive.
+            "homeassistant/sensor/tesserae/dev_lounge_next_change/config": {
+                "object_id": "tesserae_dev_lounge_next_change",
+                "device": lounge,
+            },
+        },
+    )
+    ha._sweep_stale_retained()
+    blanked = {t for t, p, *_ in client.published if p == b""}
+    assert "homeassistant/button/tesserae/dev_lounge_next/config" in blanked
+    assert "homeassistant/button/tesserae/dev_lounge_refresh/config" not in blanked
+    assert "homeassistant/sensor/tesserae/dev_lounge_next_change/config" not in blanked

@@ -131,6 +131,29 @@ to the hub via `via_device`):
   the display's wake interval (two missed intervals means offline).
 - **button** *Refresh now*, re-render whatever the display is showing
   and force a repaint.
+- **buttons** *Next* and *Previous*, step whatever this display is
+  following right now, one page, on this display only. They work like
+  the panel's own left / right buttons, with these differences:
+    - The lineup is the one on the glass. When several lineups are bound
+      (one per time slot, say), it's the one whose page the display is
+      showing, the same one the *Lineup* select shows. A daily or
+      interval lineup that fired counts as the one on the glass.
+    - Within it, the page's link for that button wins, else the next or
+      previous page in lineup order, wrapping round. A pre-rendered frame
+      is used when there is one. There's no hold: a timed lineup carries
+      on from its next step as usual.
+    - A one-page lineup has nowhere to go, so the press does nothing
+      (History shows it as a no-op). With no lineup, the press steps the
+      display's rotation, if one reaches it, and holds it the way a
+      physical button press does. With neither, it does nothing.
+    - After a manually sent dashboard, *Next* goes to the page after the
+      one the lineup was on.
+    - They still work while *Automation* is off and during quiet hours,
+      like other manual sends. If the page doesn't reach the display (it
+      fails to render, a newer send for the display wins, the dashboard
+      is gone), the display stays on its old page, the lineup position
+      isn't moved, and the reason shows on *Last error*. A remapped panel
+      button doesn't change them, and they don't fire the *Input* event.
 - **event** *Input*, fires for physical buttons (`button`) and touch
   gestures (`tap`, `swipe`, `slide`) with the button name, gesture,
   action, slider value and the page landed on as attributes. Use it as
