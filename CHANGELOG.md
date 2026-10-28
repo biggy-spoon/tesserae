@@ -6,6 +6,8 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.487.0], 2026-10-28
+
 ### Added
 
 - Two switches next to the Home Assistant discovery toggle, both on by
