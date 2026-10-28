@@ -309,6 +309,9 @@ def create_app(
     # private ranges (comma-separated CIDRs). Merged with the Settings UI
     # list at request time; see app.auth._is_private_client.
     app.config["TRUSTED_NETWORKS"] = os.environ.get("TESSERAE_TRUSTED_NETWORKS", "").strip()
+    # Extra proxy peers allowed to supply forwarding/ingress metadata. This
+    # does not grant client access; TRUSTED_NETWORKS controls that separately.
+    app.config["TRUSTED_PROXIES"] = os.environ.get("TESSERAE_TRUSTED_PROXIES", "").strip()
 
     class _IngressPrefixMiddleware:
         """Read the public path HA Supervisor proxied this request from
@@ -354,6 +357,12 @@ def create_app(
             self._app_config = app_config
 
         def __call__(self, environ: dict[str, Any], start_response: Any) -> Any:
+            # ProxyFix has resolved the request's actual origin by this point.
+            # Keep it for provenance checks before public_url replaces it for
+            # external link generation (direct LAN forms must keep working).
+            from werkzeug.wrappers import Request
+
+            environ["tesserae.request_origin"] = Request(environ).host_url
             store = self._app_config.get("SETTINGS_STORE")
             if store is None:
                 return self._inner(environ, start_response)
@@ -402,25 +411,35 @@ def create_app(
             x_prefix=_forwarded_hops,
         )
 
-        class _UntrustedForwardedForMiddleware:
-            """Drop ``X-Forwarded-For`` unless the connection comes from a
-            proxy on this machine or the local network, before ProxyFix
-            reads it. Otherwise any client could set the header and be
-            taken for a LAN or loopback address by the auth gate. Scheme,
-            host and prefix headers are left alone: they shape links, not
-            who the caller is."""
+    class _TrustedProxyMiddleware:
+        """Accept proxy metadata from private peers or configured proxy CIDRs.
 
-            def __init__(self, inner: Any) -> None:
-                self._inner = inner
+        Run before ProxyFix, the Public URL origin capture and HA ingress.
+        Host/proto now participate in provenance checks, so they need the
+        same peer trust boundary as the forwarded client address.
+        """
 
-            def __call__(self, environ: dict[str, Any], start_response: Any) -> Any:
-                from app.auth import peer_may_forward
+        def __init__(self, inner: Any) -> None:
+            self._inner = inner
 
-                if not peer_may_forward(environ.get("REMOTE_ADDR")):
-                    environ.pop("HTTP_X_FORWARDED_FOR", None)
-                return self._inner(environ, start_response)
+        def __call__(self, environ: dict[str, Any], start_response: Any) -> Any:
+            from app.auth import peer_may_forward
 
-        app.wsgi_app = _UntrustedForwardedForMiddleware(app.wsgi_app)  # type: ignore[method-assign]
+            if not peer_may_forward(
+                environ.get("REMOTE_ADDR"), app.config.get("TRUSTED_PROXIES", "")
+            ):
+                for header in (
+                    "HTTP_X_FORWARDED_FOR",
+                    "HTTP_X_FORWARDED_HOST",
+                    "HTTP_X_FORWARDED_PROTO",
+                    "HTTP_X_FORWARDED_PORT",
+                    "HTTP_X_FORWARDED_PREFIX",
+                    "HTTP_X_INGRESS_PATH",
+                ):
+                    environ.pop(header, None)
+            return self._inner(environ, start_response)
+
+    app.wsgi_app = _TrustedProxyMiddleware(app.wsgi_app)  # type: ignore[method-assign]
 
     # Resolve the running package version. Prefer pyproject.toml on disk
     # (so a source checkout reflects post-pip-install bumps) and fall
@@ -556,12 +575,9 @@ def create_app(
         apply_ha_options(settings)
     app.secret_key = auth.secret_key(settings)
 
-    # Session cookie attributes, set rather than inherited (#251). Every
-    # state-changing admin POST rides this cookie, and the app carries no CSRF
-    # tokens, so what stops a cross-site submission today is the browser's own
-    # SameSite default. Relying on a default means the protection is whatever
-    # the operator's browser decided, which is not a property this app can
-    # state.
+    # Session cookie attributes, set rather than inherited (#251). The
+    # provenance hook below also blocks cross-origin admin mutations:
+    # SameSite alone permits requests from another port on the same host.
     #
     # ``Lax`` and not ``Strict``: Strict also withholds the cookie on a
     # top-level GET arriving from another origin, so following a link to the
@@ -580,6 +596,10 @@ def create_app(
     # ``Secure`` sets them after ``create_app`` returns.
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
+
+    from app.csrf import install_protection
+
+    install_protection(app)
 
     # v0.49: at-rest encryption for manifest-declared ``secret: true``
     # fields. Resolve the SecretBox after ``auth.secret_key`` has run
@@ -988,34 +1008,14 @@ def create_app(
         # order. atexit fires for waitress + the dev reloader child alike.
         _stop_at_exit(_browser_pool.stop)
 
-    # Transport + push manager are (re)built from current broker settings.
-    # Holding the rebuilder in app.config lets settings_routes call it on a
-    # broker change without restarting the process. Device subscriptions
-    # are re-issued on every rebuild because the transport instance changes.
-    def rebuild_transport() -> None:
-        _rebuild_transport(
-            app,
-            settings,
-            renderers,
-            devices,
-            status_cache,
-            discovery_cache,
-            page_store,
-            event_log,
-            renders_dir,
-            testing=testing,
-            dev=dev,
-        )
-
-    app.config["REBUILD_TRANSPORT"] = rebuild_transport
-    if not is_watcher:
-        rebuild_transport()
-
-    # Physical button service. Wired after rebuild_transport() so
-    # PUSH_MANAGER exists and button-driven page changes can push
-    # synchronously; the REST /frame + /status handlers pull it from
-    # app.config on every button-carrying wake. Falls back to a
-    # push-less service in the watcher path so imports work.
+    # Physical button service. Built before the first rebuild_transport():
+    # that call starts HA discovery, whose hooks capture BUTTON_SERVICE for
+    # the per-display Input event entity, and built after it the entity
+    # stayed unpublished until the next settings save. The push manager
+    # is a getter, so PUSH_MANAGER needn't exist yet: button-driven page
+    # changes still push synchronously once it does. The REST /frame +
+    # /status handlers pull the service from app.config on every
+    # button-carrying wake.
     from app.button_service import ButtonService
 
     app.config["BUTTON_SERVICE"] = ButtonService(
@@ -1044,6 +1044,29 @@ def create_app(
         # Resolved lazily: the resolver is registered further down.
         timezone_provider=lambda: _resolve_app_timezone(app),
     )
+
+    # Transport + push manager are (re)built from current broker settings.
+    # Holding the rebuilder in app.config lets settings_routes call it on a
+    # broker change without restarting the process. Device subscriptions
+    # are re-issued on every rebuild because the transport instance changes.
+    def rebuild_transport() -> None:
+        _rebuild_transport(
+            app,
+            settings,
+            renderers,
+            devices,
+            status_cache,
+            discovery_cache,
+            page_store,
+            event_log,
+            renders_dir,
+            testing=testing,
+            dev=dev,
+        )
+
+    app.config["REBUILD_TRANSPORT"] = rebuild_transport
+    if not is_watcher:
+        rebuild_transport()
 
     # Docker bridge networking gives us an internal IP that LAN
     # clients can't reach. If TESSERAE_HOST_IP isn't set and the

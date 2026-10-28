@@ -270,6 +270,26 @@ def test_custom_css_saves_and_reaches_the_compose_page(app: Flask, tmp_path: Pat
     assert _store(tmp_path).get(pid).custom_css == ""  # type: ignore[union-attr]
 
 
+def test_cadence_saved_from_the_dashboards_list_returns_to_the_list(
+    app: Flask, tmp_path: Path
+) -> None:
+    """The list's Content updates and Device wake-up forms post with
+    ``return_to=list``: the setting is saved and the browser lands back on
+    the list, not in the editor (tesserae-widget-underway#2)."""
+    client = app.test_client()
+    _sign_in(client)
+    pid = _new(client, name="Ships")
+    resp = client.post(f"/pages/{pid}", data={"refresh_minutes": "15", "return_to": "list"})
+    assert resp.status_code == 302
+    assert resp.location.rstrip("/").endswith("/pages")
+    assert _store(tmp_path).get(pid).refresh_minutes == 15
+    # The editor's own forms carry no return_to and still land in the editor.
+    resp = client.post(f"/pages/{pid}", data={"refresh_minutes": "30"})
+    assert resp.status_code == 302 and f"/pages/{pid}" in resp.location
+    html = client.get("/pages").get_data(as_text=True)
+    assert html.count('name="return_to" value="list"') == 2
+
+
 def test_update_is_a_merge_not_a_replace(app: Flask, tmp_path: Path) -> None:
     """The editor posts TWO forms to this endpoint: the header rename form
     (just ``name``) and the dashboard form (icon / device_ids / …). Each

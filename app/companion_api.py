@@ -147,6 +147,8 @@ _REMINDER_PRIORITIES = frozenset(("none", "low", "medium", "high"))
 FEATURES = (
     "devices",
     "device_setup",
+    "device_mode_observations",
+    "device_status_observations",
     "dashboards",
     "dashboard_push",
     "dashboard_settings",
@@ -1008,6 +1010,17 @@ def _device_view(
     }
     if pending_render is not None:
         view["pending_render"] = pending_render
+    facts = current_app.config["DEVICE_FACTS"].get(device.id) or {}
+    if isinstance(observation := facts.get("mode_observation"), dict):
+        public_observation: dict[str, Any] = {
+            key: observation[key] for key in ("mode", "observed_at", "source", "received_at")
+        }
+        for field, value_key in (("battery", "percent"), ("firmware", "version")):
+            if isinstance(reading := observation.get(field), dict):
+                public_observation[field] = {
+                    key: reading[key] for key in (value_key, "observed_at")
+                }
+        view["mode_observation"] = public_observation
     return view
 
 
@@ -1050,6 +1063,72 @@ def lookup_device() -> Any:
     ]
     # Duplicate registry identities cannot establish an association either.
     return jsonify({"device_id": matches[0] if len(matches) == 1 else None})
+
+
+@bp.put("/devices/<device_id>/mode-observation")
+@_require_companion("device_setup:write")
+def report_device_mode(device_id: str) -> Any:
+    """Persist the app's confirmed BLE observation, without commanding a device."""
+    device = _devices().get(device_id)
+    if device is None or device.kind_of is None:
+        return _error("not_found", "Display not found.", 404)
+    body = request.get_json(silent=True)
+    if (
+        not isinstance(body, dict)
+        or not {"mode", "observed_at", "source"} <= set(body)
+        or set(body) - {"mode", "observed_at", "source", "battery", "firmware"}
+        or body.get("mode") not in ("wifi", "bluetooth")
+        or not isinstance(body.get("source"), str)
+        or not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", body["source"])
+        or not isinstance(body.get("observed_at"), str)
+    ):
+        return _error("invalid_request", "Supply a confirmed Bluetooth mode observation.", 400)
+    now = datetime.now(UTC)
+
+    def observation_time(raw: Any) -> str:
+        if not isinstance(raw, str) or not re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})", raw
+        ):
+            raise ValueError("RFC 3339 required")
+        observed = datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(UTC)
+        if observed < datetime(1970, 1, 1, tzinfo=UTC) or observed > now + timedelta(minutes=5):
+            raise ValueError("Observation time outside accepted range")
+        return observed.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    observation: dict[str, Any] = {
+        "mode": body["mode"],
+        "source": body["source"],
+        "received_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "token_id": g.companion.token_id,
+    }
+    try:
+        observation["observed_at"] = observation_time(body["observed_at"])
+        for field, value_key in (("battery", "percent"), ("firmware", "version")):
+            if field not in body:
+                continue
+            reading = body[field]
+            if not isinstance(reading, dict) or set(reading) != {value_key, "observed_at"}:
+                raise ValueError("Supply a value and its observation time")
+            value = reading[value_key]
+            if field == "battery":
+                if type(value) is not int or not 0 <= value <= 100:
+                    raise ValueError("Battery percent must be an integer from 0 to 100")
+            elif (
+                not isinstance(value, str)
+                or not value.strip()
+                or value.strip() in ("-", "—")
+                or len(value) > 128
+                or any(ord(c) < 32 or ord(c) == 127 for c in value)
+            ):
+                raise ValueError("Supply a nonempty firmware version up to 128 characters")
+            observation[field] = {
+                value_key: value,
+                "observed_at": observation_time(reading["observed_at"]),
+            }
+    except (ValueError, OverflowError) as error:
+        return _error("invalid_request", str(error), 400)
+    current_app.config["DEVICE_FACTS"].record_mode_observation(device_id, observation)
+    return "", 204
 
 
 # -- device timeline -----------------------------------------------------

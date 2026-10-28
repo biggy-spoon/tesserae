@@ -122,7 +122,8 @@ their choice values or labels.
   in one request works. Explicit writes/resets to hidden fields are rejected
   atomically; saving the controller alone preserves the hidden child.
 - Sliders return `minimum`, `maximum`, `step` and an optional display-only
-  `unit`. The default range/step is 0–100 by 1, matching web controls. Values are
+  `unit` on numeric fields (`number`, `integer`, `slider`) only. The default
+  range/step is 0–100 by 1, matching web controls. Values are
   finite JSON numbers and must satisfy every target's range and step. Shared
   inputs intersect compatible ranges; incompatible step grids stay read-only.
 - A location is an object with finite `latitude` (-90–90) and `longitude`
@@ -132,12 +133,12 @@ their choice values or labels.
   keys may be retained while editing coordinates only if their values are
   unchanged on every target; new/changed unknown keys are rejected. Omitted
   fields and unchanged legacy place strings remain intact.
-- Colors accept CSS hex/name/rgb/rgba/hsl/hsla colors, transparent/currentColor
-  and CSS inheritance values, plus `var(--theme-token)` and a valid-color fallback. URLs
-  and CSS declarations are rejected. The raw string is retained rather than
-  normalizing theme expressions or existing legacy values merely on opening or
-  saving a different field. The client may show a picker for representable
-  colors and exact text input for expressions.
+- New or changed colors use exactly `#rrggbb` (hex digits are case insensitive),
+  matching the web editor. Existing legacy/default representations remain
+  unchanged when omitted or explicitly retained with the same value. Null clears
+  an optional saved value; reset removes its override and restores its widget
+  default, including a legacy theme expression. Merely opening a picker or saving
+  another field never converts the stored color.
 
 Place names typed into search are sent by the server to Open-Meteo; coordinate
 entry needs no geocoding request. The lookup route is scoped to a Dashboard

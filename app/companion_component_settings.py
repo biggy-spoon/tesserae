@@ -311,7 +311,11 @@ class Schema:
                 for _, d in record.definitions
                 if isinstance(d.get("unit", ""), str)
             }
-            if len(units) == 1 and isinstance(unit := next(iter(units)), str):
+            if (
+                spec["type"] in _NUMERIC
+                and len(units) == 1
+                and isinstance(unit := next(iter(units)), str)
+            ):
                 view["unit"] = unit[:64]
             if spec["type"] == "slider":
                 constraints = self._slider_constraints(record)
@@ -422,7 +426,7 @@ class Schema:
         )
 
     def visible(self, record: Field, visiting: frozenset[str] = frozenset()) -> bool:
-        from app.companion_native_controls import condition_matches
+        from app.option_conditions import _matches
 
         if record.id in visiting:
             return False
@@ -431,7 +435,7 @@ class Schema:
             values, _ = self._values(controller)
             if not self.visible(controller, visiting | {record.id}) or not values:
                 return False
-            if not all(condition_matches(value, condition["expected"]) for value in values):
+            if not all(_matches(value, condition["expected"]) for value in values):
                 return False
         return True
 

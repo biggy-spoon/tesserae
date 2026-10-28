@@ -114,6 +114,7 @@ def test_openapi_shape_and_operation_ids_are_stable() -> None:
         "/api/app/v1/personal-data/{source_id}",
         "/api/app/v1/devices",
         "/api/app/v1/devices/lookup",
+        "/api/app/v1/devices/{device_id}/mode-observation",
         "/api/app/v1/devices/{device_id}/preview",
         "/api/app/v1/gallery/folders",
         "/api/app/v1/gallery/folders/{folder_id}",

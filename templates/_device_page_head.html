@@ -1,6 +1,6 @@
 {# Breadcrumb + header row shared by the device page and the calibration
    page. Expects ``section`` and ``is_calibration`` (bool). #}
-{% from "_device_parts.html" import device_status, device_actions with context %}
+{% from "_device_parts.html" import device_status, device_actions, mode_badge with context %}
 
 {% set _name = section.device_name or section.device_id %}
 <p class="dx-crumb">
@@ -21,6 +21,7 @@
   <div class="dx-devhead-title">
     <span class="dx-devhead-icon" aria-hidden="true"><i class="ph ph-{{ section.icon or 'device-mobile' }}"></i></span>
     <h2 class="dx-devhead-name">{{ _name }}</h2>
+    {{ mode_badge(section) }}
     <span class="tg tg--mono">{{ section.transport_badge }}</span>
     <span class="dx-devhead-kind">{{ section.kind_name }}</span>
     {{ device_status(section) }}

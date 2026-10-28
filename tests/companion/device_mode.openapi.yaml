@@ -1,0 +1,129 @@
+# Observation extension based on the iOS contract, with platform-neutral sources.
+# Layered through contract_errata.py until the next published contract refresh.
+paths:
+  /api/app/v1/devices/{device_id}/mode-observation:
+    parameters:
+    - $ref: '#/components/parameters/DeviceID'
+    put:
+      tags:
+      - Displays
+      operationId: reportCompanionDeviceMode
+      summary: Report a locally saved, confirmed Bluetooth mode observation
+      description: Requires device_mode_observations and device_setup:write. The client
+        saves confirmed mode locally before uploading. Delayed and identical retries
+        succeed without overwriting a newer observation. observed_at must include
+        a timezone and be between 1970 and five minutes in the future; the server
+        normalizes it to UTC seconds. This advisory record never changes firmware
+        settings, reachability, scheduling, or push gates. Servers also advertising
+        device_status_observations accept optional battery and firmware readings with
+        their own original observed_at timestamps. Each reading is merged independently;
+        absent values do not clear saved data. No Bluetooth keys, photos, or device
+        credentials are uploaded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceModeObservation'
+      responses:
+        '204':
+          description: Observation processed, including an older or identical retry.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+schemas:
+  DeviceModeObservation:
+    type: object
+    additionalProperties: false
+    required:
+    - mode
+    - observed_at
+    - source
+    properties:
+      mode:
+        type: string
+        enum:
+        - wifi
+        - bluetooth
+      observed_at:
+        type: string
+        format: date-time
+      source:
+        type: string
+        minLength: 1
+        maxLength: 32
+        pattern: '^[a-z][a-z0-9_]{0,31}(?![\s\S])'
+        description: Client-defined lowercase identifier, such as ios_ble or android_ble.
+      battery:
+        $ref: '#/components/schemas/DeviceBatteryObservation'
+      firmware:
+        $ref: '#/components/schemas/DeviceFirmwareObservation'
+  DeviceModeObservationStatus:
+    type: object
+    additionalProperties: false
+    required:
+    - mode
+    - observed_at
+    - source
+    - received_at
+    properties:
+      mode:
+        type: string
+        enum:
+        - wifi
+        - bluetooth
+      observed_at:
+        type: string
+        format: date-time
+      source:
+        type: string
+        minLength: 1
+        maxLength: 32
+        pattern: '^[a-z][a-z0-9_]{0,31}(?![\s\S])'
+        description: Original client-defined source identifier.
+      received_at:
+        type: string
+        format: date-time
+      battery:
+        $ref: '#/components/schemas/DeviceBatteryObservation'
+      firmware:
+        $ref: '#/components/schemas/DeviceFirmwareObservation'
+  DeviceBatteryObservation:
+    type: object
+    additionalProperties: false
+    required:
+    - percent
+    - observed_at
+    properties:
+      percent:
+        type: integer
+        minimum: 0
+        maximum: 100
+      observed_at:
+        type: string
+        format: date-time
+  DeviceFirmwareObservation:
+    type: object
+    additionalProperties: false
+    required:
+    - version
+    - observed_at
+    properties:
+      version:
+        type: string
+        minLength: 1
+        maxLength: 128
+      observed_at:
+        type: string
+        format: date-time
+device_properties:
+  mode_observation:
+    allOf:
+    - $ref: '#/components/schemas/DeviceModeObservationStatus'
+    description: Last confirmed mode reported by a phone; advisory, with original
+      observation time.

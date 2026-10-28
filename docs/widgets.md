@@ -168,6 +168,14 @@ lowercase `[a-z0-9_]` is convention, not enforced. Name it `<family>_<role>`
   without it the picker guesses from the family in the name and otherwise
   files the widget under Utility. Older servers ignore the field.
 * **`render.needs_network`**, hint for the renderer (not enforced).
+* **`render.per_placement`**, set `true` when what `fetch()` returns belongs
+  to one placement: a payload fitted to the cell, or a rotation that keeps its
+  own turn. Every widget's `ctx` carries `placement_id` (`page/cell@device`,
+  or just the element id for a canvas shown outside a page; absent where the
+  host has no page), which tells two identical cells apart where `cell_id`,
+  built from the options, does not. With this flag the composer also stops
+  sharing one canvas fetch, or one last-good fallback, between placements with
+  the same options. Without it, nothing changes.
 * **`updates.on_change`**, optional data-change sources this widget knows how
   to consume. Declaring one only exposes a host-owned, per-placement **Refresh
   when this widget's data changes** switch; it does not enable refreshes by

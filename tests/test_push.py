@@ -1549,3 +1549,81 @@ def test_a_send_waits_for_the_page_to_finish_painting(
     with patch("app.push.capture_composed", return_value=(_distinct_png((9, 9, 9)), [])):
         manager.push("home", source="follow-up", followup=1)
     assert naps == []
+
+
+def test_render_in_progress_covers_the_whole_push(tmp_path: Path, composition_png: bytes) -> None:
+    """Anything that must not act on a device's old frame while a new one is
+    on its way (a quiet-hours sleep, say) asks render_in_progress(): it
+    is True for the page's devices from the push's start, and the render it
+    covered is already the latest one by the time it turns False."""
+    renderers = [_make_renderer(tmp_path, "pi_png", "png", retain=False)]
+    manager, _mqtt, png = _wired(tmp_path, composition_png, renderers)
+    page = manager._page_store.get("home")
+    page.device_ids = ["lobby"]
+    manager._page_store.save(page)
+    seen: list[tuple[bool, bool]] = []
+
+    def _capture(*_a: object, **_k: object) -> tuple[bytes, list[object]]:
+        seen.append((manager.render_in_progress("lobby"), manager.render_in_progress("hall")))
+        return png, []
+
+    assert not manager.render_in_progress("lobby")
+    with patch("app.push.capture_composed", side_effect=_capture):
+        manager.push("home")
+    assert seen == [(True, False)]
+    assert not manager.render_in_progress("lobby")
+
+    # An explicit target wins over the binding, from the settle wait on.
+    settling: list[tuple[bool, bool]] = []
+
+    def _settle(page_id: str, **_k: object) -> tuple[float, int]:
+        settling.append((manager.render_in_progress("lobby"), manager.render_in_progress("hall")))
+        return 0.0, 0
+
+    with patch.object(manager, "settle_page", side_effect=_settle):
+        manager.push("home", device_ids={"hall"})
+    assert settling == [(False, True)]
+    assert not manager.render_in_progress("hall")
+
+    # A repaint is marked from before the latest render is dropped until it lands.
+    marks: list[bool] = []
+    real_invalidate = manager.invalidate_latest_render
+
+    def _invalidate(device_id: str) -> bool:
+        marks.append(manager.render_in_progress(device_id))
+        return real_invalidate(device_id)
+
+    manager.invalidate_latest_render = _invalidate  # type: ignore[method-assign]
+    assert manager.invalidate_and_repaint("lobby") is False  # nothing to repaint from
+    assert marks == [True]
+    assert not manager.render_in_progress("lobby")
+
+
+def test_broadcast_pushes_mark_the_devices_they_deliver_to(
+    tmp_path: Path, composition_png: bytes
+) -> None:
+    """A push for no particular device (an image/URL/webpage push without a
+    device id, an unbound page with the legacy broadcast on) delivers to
+    every base renderer's device; those read as rendering while it runs.
+    Per-device clones don't take part, so their devices don't."""
+    renderers = [
+        _make_renderer(tmp_path, "pi_png", "png", retain=False),
+        _make_renderer(tmp_path, "pi_png__lobby", "png", retain=False, device="lobby"),
+    ]
+    manager, _mqtt, png = _wired(tmp_path, composition_png, renderers)
+    seen: list[tuple[bool, bool]] = []
+    base = renderers[0].module.transform
+
+    def _transform(png_bytes: bytes, *, panel: object, settings: object) -> bytes:
+        seen.append((manager.render_in_progress("pi_png"), manager.render_in_progress("lobby")))
+        return base(png_bytes, panel=panel, settings=settings)
+
+    renderers[0].module.transform = _transform  # type: ignore[attr-defined]
+    manager.push_image(png, source_label="upload")
+    assert seen == [(True, False)]
+    assert not manager.render_in_progress("pi_png")
+    seen.clear()
+    with patch("app.push.capture_composed", return_value=(_distinct_png((3, 4, 5)), [])):
+        manager.push("home")  # unbound page, legacy broadcast on
+    assert seen == [(True, False)]
+    assert not manager.render_in_progress("pi_png")

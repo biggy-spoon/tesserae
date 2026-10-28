@@ -105,3 +105,33 @@ class DeviceFactsStore:
                 return
             del data[device_id]
             self._save(data)
+
+    def record_mode_observation(self, device_id: str, observation: dict[str, Any]) -> None:
+        """Merge mode and readings by their own observation times.
+
+        The API normalizes observed_at to whole-second UTC before calling this.
+        This advisory value never changes firmware configuration or scheduling.
+        """
+        with self._lock:
+            data = self._load()
+            raw = data.get(device_id)
+            entry: dict[str, Any] = dict(raw) if isinstance(raw, dict) else {}
+            previous = entry.get("mode_observation")
+            merged = dict(previous) if isinstance(previous, dict) else {}
+            if str(merged.get("observed_at", "")) < observation["observed_at"]:
+                merged.update(
+                    {k: v for k, v in observation.items() if k not in ("battery", "firmware")}
+                )
+            for field in ("battery", "firmware"):
+                incoming = observation.get(field)
+                saved = merged.get(field)
+                if isinstance(incoming, dict) and (
+                    not isinstance(saved, dict)
+                    or str(saved.get("observed_at", "")) < incoming["observed_at"]
+                ):
+                    merged[field] = dict(incoming)
+            if merged == previous:
+                return
+            entry["mode_observation"] = merged
+            data[device_id] = entry
+            self._save(data)

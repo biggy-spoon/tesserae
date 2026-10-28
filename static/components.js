@@ -253,6 +253,9 @@
       if (boxes.length === 1 && !boxes[0].closest("[data-multiselect]")) return boxes[0].checked;
       return boxes.filter((el) => el.checked).map((el) => el.value);
     }
+    if (["number", "range"].includes(inputs[0].type) && Number.isFinite(inputs[0].valueAsNumber)) {
+      return inputs[0].valueAsNumber;
+    }
     return inputs[0].value;
   }
 

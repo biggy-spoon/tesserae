@@ -13,6 +13,110 @@ All notable changes to Tesserae are recorded here. Format loosely follows
   optional native-controls header preserves older clients' read-only behavior;
   hidden saved values, opaque field scopes and revision checks remain intact.
 
+## [0.487.0], 2026-10-28
+
+### Added
+
+- Two switches next to the Home Assistant discovery toggle, both on by
+  default: **Publish lineup controls to Home Assistant** (each lineup's
+  switch, Push now, Next and Previous, and the displays' Lineup picker)
+  and **Publish a button per dashboard to Home Assistant**. Turning one
+  off removes those entities from HA when you save; the Active dashboard
+  and per-display Dashboard pickers stay.
+
+### Fixed
+
+- Removing a Home Assistant display or lineup no longer removes the
+  entities of another whose id starts the same way (`kitchen` and
+  `kitchen_2`). Each entity is torn down by the display or lineup that
+  published it.
+- Home Assistant discovery that starts at boot now has the physical-button
+  service, so each display's *Input* event entity appears straight away
+  instead of after the next settings save.
+
+### Fixed
+
+- Home Assistant's per-display *In quiet hours* sensor follows the server's
+  time zone. It read the time zone before it was set at startup, so on the
+  Docker image and the HA add-on (both UTC) it switched on and off by the
+  UTC clock, hours away from the configured window. Quiet hours themselves
+  were not affected.
+
+### Changed
+
+- Form posts that arrive through a reverse proxy are now refused unless the
+  proxy forwards the scheme and host (`X-Forwarded-Proto` and
+  `X-Forwarded-Host`) or Settings → Server → Public URL is set to the address
+  you use. If you reach Tesserae through a proxy that doesn't forward them,
+  saving a form will fail with a 403 until you set a Public URL or forward the
+  headers. The 403 says so.
+
+### Fixed
+
+- Browser requests that change something are refused when they come from
+  another site (CSRF), whether or not they carry the session cookie. That
+  covers admin, setup, login and token-free loopback MCP calls. Devices,
+  webhooks and MCP clients with a valid token are unaffected, and a
+  configured Public URL keeps direct LAN form posts working.
+- Forwarded origins, prefixes and Home Assistant ingress headers are only
+  trusted from trusted proxies. `TESSERAE_TRUSTED_PROXIES` adds proxy CIDRs
+  outside the private defaults (public IPv6, CGNAT, VPN).
+- Creating a dashboard or canvas requires POST. The old GET URLs open the
+  form instead of creating one.
+- Malformed or non-ASCII MCP credentials are refused instead of raising a
+  server error.
+
+### Added
+
+- Companion can report phone-confirmed Bluetooth mode, battery percentage and
+  firmware version. Settings shows the saved observations with their collection
+  times; newer Wi-Fi heartbeat readings take precedence. Reports persist across
+  restarts without changing device reachability or delivery rules.
+
+- Widgets are told which placement they are rendering for: `ctx.placement_id`
+  names the page, the cell and the device. A widget that declares
+  `render.per_placement` in its manifest also gets its own fetch for each
+  placement instead of one shared by identical cells, so a rotation keeps a
+  separate turn on a big panel and a small one. Other widgets are unchanged.
+
+- The push pipeline can now be asked whether a render is under way for a
+  device (`PushManager.render_in_progress`). It is true from the moment a
+  push for the device starts, through the settle wait, the queue for the
+  render lock, rendering and publishing, and a repaint after a renderer
+  change, and false once the new render is the device's latest. Code that
+  must not act on the old picture while a new one is on its way, such as
+  putting a device to sleep for quiet hours, can wait on it instead of
+  guessing.
+
+- A device kind or hardware entry can say `"buttons": false` when it has no
+  physical buttons. Its device page then has no button map (and no Controls
+  section at all if it has no touch panel either), and Home Assistant gets no
+  Input event entity for it, instead of an entity that can never fire. Kinds
+  that don't say anything are treated as before.
+
+### Fixed
+
+- Two things saving the same device at once can no longer lose a change. A
+  device's file is read, patched and written back whole by many paths (a
+  rename, a transport switch, a token regeneration, quiet hours, a panel size
+  the device reports, a firmware-driven renderer switch). They now take turns,
+  and a save that read a device's file just before the device was removed can
+  no longer write it back.
+
+- Saving a device's button map, update delivery or synchronized wake, turning
+  automatic firmware updates on or off, and removing a device now change only
+  that one setting. Each used to copy the device's whole settings entry and
+  write it back, which could undo something saved on the same device a moment
+  earlier by another request.
+
+## [0.486.1], 2026-10-28
+
+### Fixed
+
+- Changing a dashboard's content-update cadence or device wake-up interval
+  from the Dashboards list stays on the list. The save used to redirect into
+  that dashboard's editor. (reported on tesserae-widget-underway#2)
+
 ## [0.486.0], 2026-10-28
 
 ### Added

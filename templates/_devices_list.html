@@ -8,7 +8,7 @@
    ``_build_device_section``), ``device_kinds``, ``discovered_rest`` /
    ``discovered_mqtt``, ``pairing_codes``, ``pairing_reveal``. #}
 
-{% from "_device_parts.html" import overview_tiles, render_thumb, device_actions with context %}
+{% from "_device_parts.html" import overview_tiles, render_thumb, device_actions, mode_badge with context %}
 
 {% set _opened = request.args.get('opened') %}
 {% set _show_add = request.args.get('add') == '1' or pairing_reveal or pairing_codes %}
@@ -105,6 +105,7 @@
           <span class="dx-devrow-name">
             <i class="ph ph-{{ section.icon or 'device-mobile' }} dx-devrow-icon" aria-hidden="true"></i>
             <span>{{ section.device_name }}</span>
+            {{ mode_badge(section) }}
           </span>
           <span class="dx-devrow-link"><span class="tg tg--sm tg--mono">{{ section.transport_badge }}</span>{% if section.colour_depth and section.colour_depth.prompt %} <span class="tg tg--sm tg--teal" title="This display's firmware can paint 4-level grey. Open its settings to switch." data-grey-badge>Grey ready</span>{% endif %}</span>
         </span>
@@ -113,8 +114,8 @@
           <span class="dx-devrow-mono dx-devrow-panel">{% if section.panel %}{{ section.panel.w }}×{{ section.panel.h }}{% else %}-{% endif %}</span>
         </span>
         <span class="dx-devrow-l dx-devrow-l3">
-          <span class="dx-devrow-mono dx-devrow-batt{% if section.overview.battery.low %} is-warn{% endif %}">{% if section.overview.battery.muted %}-{% else %}{{ section.overview.battery.value }}{% endif %}</span>
-          <span class="dx-devrow-mono dx-devrow-fw"{% if section.status.firmware and section.status.firmware.current %} title="{{ section.overview.firmware.value }}"{% endif %}>{% if section.status.firmware and section.status.firmware.current %}{{ section.overview.firmware.value }}{% else %}-{% endif %}</span>
+          <span class="dx-devrow-mono dx-devrow-batt{% if section.overview.battery.low %} is-warn{% endif %}"{% if section.status.phone_readings.battery %} title="{{ section.status.phone_readings.battery }}"{% endif %}>{% if section.overview.battery.muted %}-{% else %}{{ section.overview.battery.value }}{% endif %}</span>
+          <span class="dx-devrow-mono dx-devrow-fw"{% if section.status.firmware and section.status.firmware.current %} title="{{ section.status.phone_readings.firmware or section.overview.firmware.value }}"{% endif %}>{% if section.status.firmware and section.status.firmware.current %}{{ section.overview.firmware.value }}{% else %}-{% endif %}</span>
           <span class="dx-devrow-seen is-{{ _h }}">{% if _h == 'unknown' %}no heartbeat yet{% else %}{{ section.status.relative }}{% endif %}</span>
         </span>
       </span>

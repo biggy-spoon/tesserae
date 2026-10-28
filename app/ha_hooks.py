@@ -19,6 +19,7 @@ import io
 import json
 import logging
 import textwrap
+from datetime import tzinfo
 from typing import Any
 
 from flask import Flask
@@ -381,11 +382,19 @@ def _notify(app: Flask, device_id: str | None, message: str) -> str | None:
     return None
 
 
+def _timezone(app: Flask) -> tzinfo | None:
+    """The scheduler's timezone, looked up when it's needed. The hooks are
+    built while the transport is wired, before ``RESOLVE_TIMEZONE`` is set,
+    so reading it then left Home Assistant on the host clock (UTC in the
+    Docker image and the HA add-on) for the In quiet hours sensor."""
+    resolve_tz = app.config.get("RESOLVE_TIMEZONE")
+    return resolve_tz() if callable(resolve_tz) else None
+
+
 def build_ha_hooks(app: Flask) -> HaHooks:
     """Assemble the hooks from ``app.config``. Anything not wired yet on
     this install (no OTA store, no scheduler in tests) is simply left
     ``None`` and the matching entities stay unpublished."""
-    resolve_tz = app.config.get("RESOLVE_TIMEZONE")
     return HaHooks(
         deck_store=app.config.get("DECK_STORE"),
         deck_nav_store=app.config.get("DECK_NAV_STORE"),
@@ -394,7 +403,7 @@ def build_ha_hooks(app: Flask) -> HaHooks:
         rotation_state_store=app.config.get("DEVICE_ROTATION_STATE_STORE"),
         telemetry=app.config.get("DEVICE_TELEMETRY"),
         button_service=app.config.get("BUTTON_SERVICE"),
-        timezone_fn=resolve_tz if callable(resolve_tz) else None,
+        timezone_fn=lambda: _timezone(app),
         invalidate_deck_fn=lambda deck: _invalidate_deck(app, deck),
         set_device_quiet_override_fn=lambda device_id, enabled: _set_device_quiet_override(
             app, device_id, enabled

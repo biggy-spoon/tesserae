@@ -13,11 +13,11 @@ import pytest
 from app.companion_component_settings import Schema
 from app.companion_dashboard_settings import InvalidSettings
 from app.companion_native_controls import (
-    condition_matches,
     location_choices,
     valid_color,
     valid_location,
 )
+from app.option_conditions import _matches, option_visible
 from app.state.page_store import Page
 
 from ._schema import schema_for
@@ -38,7 +38,15 @@ def test_shared_condition_cases_match_browser_number_and_primitive_text():
         ).read_text()
     )
     for case in cases:
-        assert condition_matches(case["actual"], case["expected"]) is case["matches"]
+        assert _matches(case["actual"], case["expected"]) is case["matches"]
+        reg = native_registry()
+        reg["qa"].manifest["cell_options"][7]["show_if"] = {"title": case["expected"]}
+        raw = page().model_dump(mode="json")
+        raw["canvas"]["els"][0]["options"]["title"] = case["actual"]
+        assert (
+            field(native(Page.model_validate(raw), reg), "conditional").view["visible"]
+            is case["matches"]
+        )
 
 
 def native_registry():
@@ -70,6 +78,45 @@ def native(page_value: Page | None = None, reg: Any = None) -> Schema:
     return Schema(page_value or page(), reg or native_registry(), native_controls=True)
 
 
+def test_changed_color_requires_six_digit_rgb_hex():
+    cases = {
+        "#336699": True,
+        "#aAbBcC": True,
+        "red": False,
+        "#123": False,
+        "#11223344": False,
+        "rgb(1,2,3)": False,
+        "var(--accent)": False,
+        " #336699": False,
+        "": False,
+    }
+    assert {value: valid_color(value) for value in cases} == cases
+
+
+def test_companion_and_web_visibility_use_the_same_number_text():
+    reg = native_registry()
+    reg["qa"].manifest["cell_options"][7]["show_if"] = {"title": "0.000001"}
+    raw = page().model_dump(mode="json")
+    raw["canvas"]["els"][0]["options"]["title"] = 1e-6
+    specs = reg["qa"].manifest["cell_options"]
+    web_visible = option_visible(specs[7], {"title": 1e-6}, specs)
+    companion_visible = field(native(Page.model_validate(raw), reg), "conditional").view["visible"]
+    assert (web_visible, companion_visible) == (True, True)
+
+
+@pytest.mark.parametrize("numeric_type", ["number", "integer"])
+def test_only_numeric_fields_expose_units(numeric_type):
+    reg = native_registry()
+    reg["qa"].manifest["cell_options"][0]["unit"] = "not-a-text-unit"
+    reg["qa"].manifest["cell_options"][1]["unit"] = "items"
+    reg["qa"].manifest["cell_options"][1]["type"] = numeric_type
+    s = native(reg=reg)
+    assert {f.spec["name"] for f in s.components[0]["fields"] if "unit" in f.view} == {
+        "count",
+        "size",
+    }
+
+
 def test_legacy_opt_in_metadata_and_typed_roundtrip():
     reg = native_registry()
     old, current = Schema(page(), reg), native(reg=reg)
@@ -94,12 +141,12 @@ def test_legacy_opt_in_metadata_and_typed_roundtrip():
         {
             size.id: 1.15,
             field(current, "place").id: place,
-            field(current, "ink").id: "rebeccapurple",
+            field(current, "ink").id: "#336699",
         },
     )
     again = native(updated, reg)
     assert field(again, "place").view["value"] == place
-    assert field(again, "ink").view["value"] == "rebeccapurple"
+    assert field(again, "ink").view["value"] == "#336699"
     assert field(again, "size").view["value"] == 1.15
     assert again.doc["canvas"]["els"][0]["options"]["unknown"] == {"keep": 1}
 
@@ -235,48 +282,33 @@ def test_location_rejects_invalid_changed_value(value):
         patch(s, {field(s, "place").id: value})
 
 
-@pytest.mark.parametrize(
-    "value",
-    [
-        "#123",
-        "#11223344",
-        "red",
-        "rebeccapurple",
-        "rgb(1, 2, 3)",
-        "rgba(1, 2, 3, 0.5)",
-        "rgb(10% 20% 30% / 50%)",
-        "hsl(120, 50%, 25%)",
-        "hsla(120deg, 50%, 25%, .5)",
-        "var(--accent)",
-        "var(--ink, #fff)",
-        "var(--ink, rgba(1, 2, 3, .5))",
-        "transparent",
-        "currentColor",
-    ],
-)
-def test_color_accepts_css_colors_and_theme_values(value):
-    assert valid_color(value)
+@pytest.mark.parametrize("value", ["#336699", "#aAbBcC"])
+def test_color_accepts_six_digit_rgb_hex(value):
     s = native()
     assert field(native(patch(s, {field(s, "ink").id: value})), "ink").view["value"] == value
 
 
 @pytest.mark.parametrize(
-    "value",
-    [
-        "url(https://example.com/a)",
-        "red;background:black",
-        "rgb(999,0,0)",
-        "rgba(1,2,3,128)",
-        "rgb(1,,2,3)",
-        {"red": 2},
-        "not-a-css-color",
-    ],
+    "value", ["#123", "#11223344", "red", "rgb(1,2,3)", "var(--accent)", " #336699", "", {"red": 2}]
 )
-def test_color_rejects_invalid_changed_values(value):
-    assert not valid_color(value)
+def test_color_rejects_non_rgb_hex_changed_values(value):
     s = native()
     with pytest.raises(InvalidSettings):
         patch(s, {field(s, "ink").id: value})
+
+
+def test_legacy_color_can_be_kept_cleared_and_reset():
+    raw = page().model_dump(mode="json")
+    raw["canvas"]["els"][0]["options"]["ink"] = "red"
+    s = native(Page.model_validate(raw))
+    kept = native(patch(s, {field(s, "ink").id: "red"}))
+    assert field(kept, "ink").view["value"] == "red"
+    cleared = native(patch(kept, {field(kept, "ink").id: None}))
+    assert field(cleared, "ink").view["value"] is None
+    assert field(cleared, "ink").view["has_override"]
+    reset = native(patch(cleared, reset_fields=[field(cleared, "ink").id]))
+    assert field(reset, "ink").view["value"] == "var(--fg)"
+    assert not field(reset, "ink").view["has_override"]
 
 
 def test_location_and_color_legacy_values_survive_other_edits_and_resets():

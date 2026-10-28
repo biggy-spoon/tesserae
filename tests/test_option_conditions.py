@@ -8,13 +8,14 @@ field's input in place, enabled, so its value is still submitted.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from flask import Flask, render_template
 
 from app.main import REPO_ROOT, create_app
-from app.option_conditions import option_visible
+from app.option_conditions import _matches, option_visible
 
 OPTS = [
     {
@@ -117,6 +118,20 @@ def test_multiselect_matches_any_pick() -> None:
     assert not option_visible(spec, {"tags": ["a"]}, [tags, spec])
 
 
+def test_shared_browser_condition_cases_match_web_visibility() -> None:
+    cases = json.loads(
+        (
+            Path(__file__).parent
+            / "companion/contract/Fixtures/dashboard-native-condition-cases.json"
+        ).read_text()
+    )
+    for case in cases:
+        controller = {"name": "mode", "type": "number", "default": case["actual"]}
+        dependent = {"name": "child", "show_if": {"mode": case["expected"]}}
+        assert _matches(case["actual"], case["expected"]) is case["matches"]
+        assert option_visible(dependent, {}, [controller, dependent]) is case["matches"]
+
+
 @pytest.fixture
 def app(tmp_path: Path) -> Flask:
     return create_app(
@@ -150,6 +165,94 @@ def test_drawer_form_shows_matching_field(app: Flask) -> None:
     start = html.index('name="opt_cluster_style"')
     wrap = html.rindex('<div class="opt-cond"', 0, start)
     assert " hidden>" not in html[wrap:start]
+
+
+def test_drawer_form_uses_browser_number_text_for_shared_condition_cases(app: Flask) -> None:
+    cases = json.loads(
+        (
+            Path(__file__).parent
+            / "companion/contract/Fixtures/dashboard-native-condition-cases.json"
+        ).read_text()
+    )
+    for case in cases:
+        if type(case["actual"]) not in (int, float):
+            continue
+        opts = [
+            {"name": "mode", "type": "number", "label": "Mode", "default": 0},
+            {
+                "name": "child",
+                "type": "string",
+                "label": "Child",
+                "show_if": {"mode": case["expected"]},
+            },
+        ]
+        with app.test_request_context():
+            html = render_template(
+                "panels_source_form.html", opts=opts, values={"mode": case["actual"]}, sid="s1"
+            )
+        start = html.index('name="opt_child"')
+        wrap = html.rindex('<div class="opt-cond"', 0, start)
+        assert (" hidden>" not in html[wrap:start]) is case["matches"]
+
+
+def _assert_drawer_numeric_conditions_in_browser(app: Flask, browser, tmp_path: Path) -> None:
+    cases = json.loads(
+        (
+            Path(__file__).parent
+            / "companion/contract/Fixtures/dashboard-native-condition-cases.json"
+        ).read_text()
+    )
+    script = (REPO_ROOT / "static/components.js").read_text()
+    page = browser.new_page()
+    for index, case in enumerate(cases):
+        if type(case["actual"]) not in (int, float):
+            continue
+        opts = [
+            {"name": "mode", "type": "number", "label": "Mode", "default": 0},
+            {
+                "name": "child",
+                "type": "string",
+                "label": "Child",
+                "show_if": {"mode": case["expected"]},
+            },
+            {
+                "name": "empty_child",
+                "type": "string",
+                "label": "Empty child",
+                "show_if": {"mode": ""},
+            },
+        ]
+        with app.test_request_context():
+            form = render_template(
+                "panels_source_form.html", opts=opts, values={"mode": case["actual"]}, sid="s1"
+            )
+        path = tmp_path / f"numeric-conditions-{index}.html"
+        path.write_text(f"<!doctype html><html><body>{form}<script>{script}</script></body></html>")
+        page.goto(path.as_uri())
+        child = page.locator('[name="opt_child"]').locator("xpath=ancestor::*[@data-show-if][1]")
+        visible = child.evaluate("el => !el.hidden")
+        assert visible is case["matches"], (
+            f"{case}: browser_visible={visible}, expected={case['matches']}"
+        )
+        page.locator('[name="opt_mode"]').fill("")
+        empty_child = page.locator('[name="opt_empty_child"]').locator(
+            "xpath=ancestor::*[@data-show-if][1]"
+        )
+        assert empty_child.evaluate("el => !el.hidden") is True
+    page.close()
+
+
+def test_drawer_numeric_conditions_match_in_browser(app: Flask, tmp_path: Path) -> None:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        if not Path(p.chromium.executable_path).exists():
+            pytest.skip("Playwright Chromium not installed")
+        browser = p.chromium.launch()
+        try:
+            _assert_drawer_numeric_conditions_in_browser(app, browser, tmp_path)
+        finally:
+            browser.close()
 
 
 def test_schema_accepts_show_if_and_rejects_bad_shapes() -> None:
