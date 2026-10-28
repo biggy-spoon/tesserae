@@ -6,6 +6,30 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- Form posts that arrive through a reverse proxy are now refused unless the
+  proxy forwards the scheme and host (`X-Forwarded-Proto` and
+  `X-Forwarded-Host`) or Settings → Server → Public URL is set to the address
+  you use. If you reach Tesserae through a proxy that doesn't forward them,
+  saving a form will fail with a 403 until you set a Public URL or forward the
+  headers. The 403 says so.
+
+### Fixed
+
+- Browser requests that change something are refused when they come from
+  another site (CSRF), whether or not they carry the session cookie. That
+  covers admin, setup, login and token-free loopback MCP calls. Devices,
+  webhooks and MCP clients with a valid token are unaffected, and a
+  configured Public URL keeps direct LAN form posts working.
+- Forwarded origins, prefixes and Home Assistant ingress headers are only
+  trusted from trusted proxies. `TESSERAE_TRUSTED_PROXIES` adds proxy CIDRs
+  outside the private defaults (public IPv6, CGNAT, VPN).
+- Creating a dashboard or canvas requires POST. The old GET URLs open the
+  form instead of creating one.
+- Malformed or non-ASCII MCP credentials are refused instead of raising a
+  server error.
+
 ### Added
 
 - Companion can report phone-confirmed Bluetooth mode, battery percentage and
