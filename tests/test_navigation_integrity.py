@@ -3,12 +3,16 @@ lineup and page actually on its glass.
 
 * Daily / interval lineup fires record it, like cycle lineup advances, so
   Next / Previous step the lineup that last painted the display.
+* Reading the position, delivering the next page and recording it happen
+  under one per-display lock across button presses, Next / Previous and
+  the scheduler, so they can't interleave into "glass shows c, record b".
 * Only a frame that reached the panel (``sent`` / ``no_change``, or a
   promoted warm frame) moves the record; failed, superseded or missing
   pages leave it, and Next / Previous report why."""
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from app import button_service as button_service_module
 from app.button_service import ButtonService
 from app.push import PushResult, RendererResult
 from app.scheduler import Scheduler
@@ -39,9 +44,18 @@ def at(hh: int, mm: int, ss: int = 0) -> datetime:
 class FakePush:
     calls: list[str] = field(default_factory=list)
     status: dict[str, str] = field(default_factory=dict)  # page -> status
+    block_on: str | None = None
+    started: threading.Event = field(default_factory=threading.Event)
+    release: threading.Event = field(default_factory=threading.Event)
+    promote_kwargs: list[dict[str, Any]] = field(default_factory=list)
+    push_kwargs: list[dict[str, Any]] = field(default_factory=list)
 
     def push(self, page_id: str, **kw: Any) -> PushResult:
         self.calls.append(page_id)
+        self.push_kwargs.append(kw)
+        if page_id == self.block_on:
+            self.started.set()
+            assert self.release.wait(5), "test never released the push"
         status = self.status.get(page_id, "sent")
         rows = [
             RendererResult(renderer_id=f"r__{d}", topic="", digest="x", url="", bytes_written=1)
@@ -54,7 +68,8 @@ class FakePush:
             error=None if status in ("sent", "no_change") else f"{page_id} {status}",
         )
 
-    def promote_deck_page(self, _device_id: str, _page_id: str) -> bool:
+    def promote_deck_page(self, _device_id: str, _page_id: str, **kw: Any) -> bool:
+        self.promote_kwargs.append(kw)
         return False
 
     def device_in_quiet_hours(self, _device_id: str) -> bool:
@@ -227,3 +242,88 @@ def test_hook_surfaces_the_reason_to_home_assistant(tmp_path: Path) -> None:
     assert ha_hooks._step_device(app, "frame", 1) == "Frame: b superseded"
     rig.push.status.pop("b")
     assert ha_hooks._step_device(app, "frame", 1) is None
+
+
+# ---------- one display's navigation is serialised ----------
+
+
+def test_scheduler_waits_for_a_next_in_flight(tmp_path: Path) -> None:
+    # The reproduced race: HA delivers b, the scheduler delivers and records
+    # c, then HA records b, so the record says b while the glass shows c.
+    rig = _rig(tmp_path)
+    rig.decks.upsert(_cycle("cycle", ["a", "b", "c"]))
+    rig.nav.set("frame", "cycle", "a")
+    rig.push.block_on = "b"
+
+    step = threading.Thread(target=lambda: rig.svc.step(device_id="frame", forward=True))
+    step.start()
+    assert rig.push.started.wait(5)
+    tick = threading.Thread(target=lambda: rig.sched._tick_once(at(1, 0)))  # c is due
+    tick.start()
+    tick.join(0.3)
+    assert tick.is_alive(), "the scheduler should be waiting for the step"
+    assert rig.push.calls == ["b"]
+    rig.push.release.set()
+    step.join(5)
+    tick.join(5)
+    assert rig.push.calls == ["b", "c"]
+    # Record and glass agree: c was delivered last and recorded last.
+    assert rig.nav.current_page("frame", "cycle") == "c"
+
+
+def test_next_reports_busy_when_the_display_stays_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig = _rig(tmp_path)
+    rig.decks.upsert(_cycle("cycle", ["a", "b"]))
+    monkeypatch.setattr(button_service_module, "NAV_LOCK_TIMEOUT_S", 0.05)
+    locked, done = threading.Event(), threading.Event()
+
+    def hold_lock() -> None:
+        with rig.nav.device_lock("frame"):
+            locked.set()
+            done.wait(5)
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    assert locked.wait(5)
+    try:
+        result = rig.svc.step(device_id="frame", forward=True)
+    finally:
+        done.set()
+        holder.join(5)
+    assert result.error == "Display busy, try again."
+    assert rig.push.calls == []
+
+
+def test_navigation_lock_is_per_display_and_reentrant(tmp_path: Path) -> None:
+    nav = DeckNavStore(tmp_path / "nav.json")
+    assert nav.device_lock("a") is nav.device_lock("a")
+    assert nav.device_lock("a") is not nav.device_lock("b")
+    with nav.device_lock("a"), nav.device_lock("a"):
+        pass
+
+
+# ---------- only a delivered frame moves the position ----------
+
+
+def test_a_home_assistant_step_bounds_promote_and_push(tmp_path: Path) -> None:
+    from flask import Flask
+
+    from app import ha_hooks
+
+    rig = _rig(tmp_path)
+    rig.decks.upsert(_cycle("cycle", ["a", "b"]))
+    rig.nav.set("frame", "cycle", "a")
+    app = Flask(__name__)
+    device = type("D", (), {"id": "frame", "display_name": "Frame", "kind_of": "x"})()
+    app.config["DEVICE_REGISTRY"] = type("R", (), {"get": staticmethod(lambda _id: device)})()
+    app.config["BUTTON_SERVICE"] = rig.svc
+    assert ha_hooks._step_device(app, "frame", 1) is None
+    assert rig.push.promote_kwargs == [{"lock_timeout_s": 60.0}]
+    assert rig.push.push_kwargs[-1]["lock_timeout_s"] == 60.0
+    assert rig.push.push_kwargs[-1]["settle_max_s"] == 30.0
+    # A physical press is unchanged: no deadlines.
+    rig.svc.handle_button(device_id="frame", button="right", event_id=1)
+    assert rig.push.promote_kwargs[-1] == {}
+    assert "lock_timeout_s" not in rig.push.push_kwargs[-1]

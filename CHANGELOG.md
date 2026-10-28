@@ -16,6 +16,22 @@ All notable changes to Tesserae are recorded here. Format loosely follows
   is left alone. They work while automation is paused and during quiet
   hours, like other manual sends.
 
+### Changed
+
+- Home Assistant commands that render run one at a time on a background
+  worker, in the order they arrived, instead of on the MQTT connection's
+  own thread, so a slow render no longer stalls other commands and
+  heartbeats. Each waits at most a minute for the renderer and reports a
+  busy renderer, a failed push or a full queue on *Last error*. Saving
+  Settings no longer waits for a command in progress.
+- A newer push for a display only cancels an older one still waiting
+  while the newer one is itself still waiting or running; one that gave
+  up on its wait no longer cancels anything.
+- Button presses, Home Assistant's Next / Previous, lineup timer steps,
+  home returns and daily or interval lineup fires take turns per display,
+  so two of them can't leave the recorded position naming a page other
+  than the one on the glass.
+
 ### Fixed
 
 - A lineup's position is only recorded once its page has reached the

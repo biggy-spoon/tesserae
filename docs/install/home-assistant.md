@@ -103,6 +103,13 @@ Under the **Tesserae hub** device:
 - Diagnostic **sensors** + **binary_sensors**: *Last push*, *Pushes
   today*, *Last error*, *Busy*.
 
+Commands that render (dashboard buttons and selects, *Push now*, *Next*
+/ *Previous*, *Refresh now*, the *Lineup* select, notify, firmware
+installs) run one at a time in the background, in the order HA sent
+them, so a slow render never holds up other commands or the MQTT
+connection. A command that waits more than a minute for another render
+gives up as busy, and one that fails says why on *Last error*.
+
 Under each **registered display** (one HA device card per panel, linked
 to the hub via `via_device`):
 
@@ -278,5 +285,6 @@ The token comes from **Settings → System → Webhook** in Tesserae, see
   tab, or run it as the HA App so it is served through Ingress on HA's own
   origin.
 - **Buttons fire but nothing pushes.** Check the *Last error* sensor
-  on the hub device, push failures (broker offline, no device bound)
+  on the hub device, push failures (broker offline, no device bound,
+  the renderer busy for over a minute, too many commands waiting)
   surface there with the upstream error.
