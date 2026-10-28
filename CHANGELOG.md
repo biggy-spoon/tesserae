@@ -6,6 +6,15 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Two things saving the same device at once can no longer lose a change. A
+  device's file is read, patched and written back whole by many paths (a
+  rename, a transport switch, a token regeneration, quiet hours, a panel size
+  the device reports, a firmware-driven renderer switch). They now take turns,
+  and a save that read a device's file just before the device was removed can
+  no longer write it back.
+
 ## [0.486.0], 2026-10-28
 
 ### Added
