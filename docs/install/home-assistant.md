@@ -75,7 +75,9 @@ MQTT**.
 Under the **Tesserae hub** device:
 
 - One **button** per saved dashboard, pressing it re-renders that
-  page and fans the frame out to every device the page is bound to.
+  page and fans the frame out to every device the page is bound to
+  (unless you switch them off, see [Trimming what's
+  published](#trimming-whats-published)).
 - A **select** named *Active dashboard*, same as the buttons, but as
   a single dropdown (handy for HA Lovelace UIs).
 - An **image** entity named *Last render*, the composition PNG of
@@ -92,7 +94,9 @@ Under the **Tesserae hub** device:
 - One **switch** per lineup, mirroring its enabled flag. Lineups with
   a bound display also get a *Push now* **button** (warm every page and
   send the entry page), and lineups with more than one page get *Next*
-  and *Previous* **buttons** that step every bound display.
+  and *Previous* **buttons** that step every bound display. These can
+  be switched off, see [Trimming what's
+  published](#trimming-whats-published).
 - A **notify** entity named *Notify all displays*: call
   `notify.send_message` on it and the text is rendered as a
   black-on-white card onto every display.
@@ -113,7 +117,8 @@ to the hub via `via_device`):
   display to *only* this display.
 - **select** *Lineup*, which lineup the display follows. Picking one
   binds the display to it and makes it live there; *(none)* unbinds
-  it from every lineup.
+  it from every lineup. Goes with the lineup controls when those are
+  switched off.
 - **number** *Hold* (minutes). Set it to hold the page currently on the
   glass against the rotation for that long; 0 clears the hold. Counts
   down as the hold runs.
@@ -144,6 +149,23 @@ to the hub via `via_device`):
   **Temperature**, **Humidity**, **Uptime**, plus **Low battery**
   (against the Settings → Server → Low-battery warnings threshold) and **Next wake** (the
   server's wake prediction).
+
+### Trimming what's published
+
+Two switches under **Settings → Server → Network & integrations**, next
+to the discovery toggle, leave whole groups out. Both are on by default:
+
+- **Publish lineup controls to Home Assistant**: the per-lineup switch,
+  *Push now*, *Next* and *Previous* on the hub, and each display's
+  *Lineup* select. With lots of lineups (one per time slot, say) these
+  crowd HA out.
+- **Publish a button per dashboard to Home Assistant**: the hub's
+  dashboard buttons. The hub's *Active dashboard* select and each
+  display's *Dashboard* select stay.
+
+Saving removes the entities from HA straight away (Tesserae publishes
+empty retained configs for them), and turning a switch back on brings
+them back. No restart needed.
 
 ### Use cases
 

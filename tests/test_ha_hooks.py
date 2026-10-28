@@ -371,3 +371,18 @@ def test_timezone_is_looked_up_when_needed_not_when_the_hooks_are_built() -> Non
     phoenix = ZoneInfo("America/Phoenix")
     app.config["RESOLVE_TIMEZONE"] = lambda: phoenix
     assert hooks.timezone_fn() is phoenix
+
+
+def test_publish_toggles_are_default_on_settings_fields() -> None:
+    for name in ("ha_discovery_lineup_controls", "ha_discovery_dashboard_buttons"):
+        field = next(f for f in APP_FIELDS if f["name"] == name)
+        assert field["type"] == "switch"
+        assert field["default"] is True
+        # Rendered in the same card as the discovery switch itself.
+        assert field["group"] == "network"
+    names = [f["name"] for f in APP_FIELDS]
+    first = names.index("ha_discovery_enabled")
+    assert names[first + 1 : first + 3] == [
+        "ha_discovery_lineup_controls",
+        "ha_discovery_dashboard_buttons",
+    ]
