@@ -8,6 +8,11 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ### Added
 
+- Companion can report phone-confirmed Bluetooth mode, battery percentage and
+  firmware version. Settings shows the saved observations with their collection
+  times; newer Wi-Fi heartbeat readings take precedence. Reports persist across
+  restarts without changing device reachability or delivery rules.
+
 - Widgets are told which placement they are rendering for: `ctx.placement_id`
   names the page, the cell and the device. A widget that declares
   `render.per_placement` in its manifest also gets its own fetch for each
