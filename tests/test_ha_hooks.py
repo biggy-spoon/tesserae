@@ -357,3 +357,17 @@ def test_deck_store_notifies_listeners_on_upsert_and_delete(tmp_path: Path) -> N
     assert store.delete("d1") is False
     assert calls == ["hit", "hit"]
     store.remove_listener(calls.append)  # unknown callback is a no-op
+
+
+def test_timezone_is_looked_up_when_needed_not_when_the_hooks_are_built() -> None:
+    """The hooks are built while the transport is wired, before
+    RESOLVE_TIMEZONE exists; the In quiet hours sensor must still use it."""
+    from zoneinfo import ZoneInfo
+
+    app = Flask(__name__)
+    hooks = ha_hooks.build_ha_hooks(app)
+    assert hooks.timezone_fn is not None
+    assert hooks.timezone_fn() is None  # nothing wired yet: host-local
+    phoenix = ZoneInfo("America/Phoenix")
+    app.config["RESOLVE_TIMEZONE"] = lambda: phoenix
+    assert hooks.timezone_fn() is phoenix
