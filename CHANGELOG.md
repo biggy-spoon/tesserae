@@ -8,6 +8,15 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ### Added
 
+- The push pipeline can now be asked whether a render is under way for a
+  device (`PushManager.render_in_progress`). It is true from the moment a
+  push for the device starts, through the settle wait, the queue for the
+  render lock, rendering and publishing, and a repaint after a renderer
+  change, and false once the new render is the device's latest. Code that
+  must not act on the old picture while a new one is on its way, such as
+  putting a device to sleep for quiet hours, can wait on it instead of
+  guessing.
+
 - A device kind or hardware entry can say `"buttons": false` when it has no
   physical buttons. Its device page then has no button map (and no Controls
   section at all if it has no touch panel either), and Home Assistant gets no
