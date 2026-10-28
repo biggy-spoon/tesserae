@@ -6,6 +6,8 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.487.1], 2026-10-28
+
 ### Fixed
 
 - Interface text no longer changes typeface and apparent size after a page
