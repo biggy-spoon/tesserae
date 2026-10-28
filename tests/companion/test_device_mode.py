@@ -22,7 +22,10 @@ def _headers(app: Flask) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_mode_is_persisted_readable_and_does_not_change_device_behavior(app: Flask) -> None:
+@pytest.mark.parametrize("source", ["ios_ble", "android_ble", "web_ble", "a", "a" * 32])
+def test_mode_is_persisted_readable_and_does_not_change_device_behavior(
+    app: Flask, source: str
+) -> None:
     _seed_device(app)
     client = app.test_client()
     headers = _headers(app)
@@ -30,17 +33,20 @@ def test_mode_is_persisted_readable_and_does_not_change_device_behavior(app: Fla
     status = copy.deepcopy(app.config["DEVICE_STATUS"])
     before = client.get("/api/app/v1/devices", headers=headers).get_json()["devices"][0]
     assert "mode_observation" not in before
-    assert client.put(_PATH, headers=headers, json=_OBSERVATION).status_code == 204
+    report = {**_OBSERVATION, "source": source}
+    _validate(report, "DeviceModeObservation")
+    assert client.put(_PATH, headers=headers, json=report).status_code == 204
 
     store = app.config["DEVICE_FACTS"]
     persisted = DeviceFactsStore(store._path).get("kitchen")
     assert persisted is not None
     assert persisted["mode_observation"]["mode"] == "bluetooth"
+    assert persisted["mode_observation"]["source"] == source
     assert persisted["mode_observation"]["token_id"]
     body = client.get("/api/app/v1/devices", headers=headers).get_json()
     _validate(body, "DevicesResponse")
     observation = body["devices"][0]["mode_observation"]
-    assert observation == {**_OBSERVATION, "received_at": observation["received_at"]}
+    assert observation == {**report, "received_at": observation["received_at"]}
     assert app.config["DEVICE_STATUS"] == status
     assert app.config["DEVICE_REGISTRY"].get("kitchen").manifest == manifest
 
@@ -71,7 +77,24 @@ def test_old_and_identical_retries_cannot_replace_newer_mode(app: Flask) -> None
         [],
         {},
         {**_OBSERVATION, "mode": "unknown"},
-        {**_OBSERVATION, "source": "advertisement"},
+        *[
+            {**_OBSERVATION, "source": source}
+            for source in (
+                None,
+                True,
+                1,
+                [],
+                {},
+                "",
+                "IOS_BLE",
+                "1_ble",
+                "ios-ble",
+                "ios ble",
+                "ios_ble\n",
+                "蓝牙",
+                "a" * 33,
+            )
+        ],
         {**_OBSERVATION, "observed_at": "2026-01-02T03:04:05"},
         {**_OBSERVATION, "observed_at": "20260102T030405Z"},
         {**_OBSERVATION, "observed_at": "9999-01-01T00:00:00Z"},

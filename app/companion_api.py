@@ -1077,7 +1077,8 @@ def report_device_mode(device_id: str) -> Any:
         or not {"mode", "observed_at", "source"} <= set(body)
         or set(body) - {"mode", "observed_at", "source", "battery", "firmware"}
         or body.get("mode") not in ("wifi", "bluetooth")
-        or body.get("source") != "ios_ble"
+        or not isinstance(body.get("source"), str)
+        or not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", body["source"])
         or not isinstance(body.get("observed_at"), str)
     ):
         return _error("invalid_request", "Supply a confirmed Bluetooth mode observation.", 400)
@@ -1095,7 +1096,7 @@ def report_device_mode(device_id: str) -> Any:
 
     observation: dict[str, Any] = {
         "mode": body["mode"],
-        "source": "ios_ble",
+        "source": body["source"],
         "received_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "token_id": g.companion.token_id,
     }

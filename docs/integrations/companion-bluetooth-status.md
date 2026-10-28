@@ -26,8 +26,12 @@ Send `PUT /api/app/v1/devices/{device_id}/mode-observation` with a JSON body:
 ```
 
 Success returns `204`. Mode is `bluetooth` or `wifi`; each timestamp is RFC 3339
-with a timezone and cannot be more than five minutes in the future. Battery
-percentage is an integer from 0 to 100. Firmware is a nonempty version string,
+with a timezone and cannot be more than five minutes in the future. `source`
+is a client-defined identifier of 1–32 ASCII characters: a lowercase letter
+followed by lowercase letters, digits or underscores (`[a-z][a-z0-9_]{0,31}`).
+For example, iOS uses `ios_ble`; other clients can use `android_ble` or `web_ble`
+without a server update. The server stores and returns the original identifier.
+Battery percentage is an integer from 0 to 100. Firmware is a nonempty version string,
 up to 128 characters, without control characters.
 
 The server merges mode, battery and firmware by their own observation times.
@@ -38,7 +42,8 @@ for clients with `devices:read`.
 ## Meaning of the displayed status
 
 These are saved observations. A newer Wi-Fi heartbeat reading takes precedence
-over an older Bluetooth reading in Settings. Phone reports leave heartbeat
+over an older Bluetooth reading in Settings. The last-confirmed mode line appears
+only after a valid observation exists. Phone reports leave heartbeat
 freshness, reachability, configured transport, quiet hours and push scheduling
 unchanged. A successful report confirms that the server saved the observation;
 it does not send a command to the display.

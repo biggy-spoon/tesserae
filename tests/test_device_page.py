@@ -89,11 +89,14 @@ def test_device_page_unknown_device_redirects_to_the_list(app: Flask) -> None:
     assert resp.location.endswith("/settings/devices")
 
 
-def test_phone_mode_report_is_visible_and_wifi_removes_bluetooth_badge(app: Flask) -> None:
+@pytest.mark.parametrize("source", ["ios_ble", "android_ble"])
+def test_phone_mode_report_is_visible_and_wifi_removes_bluetooth_badge(
+    app: Flask, source: str
+) -> None:
     client = app.test_client()
     _sign_in(client)
     dev = _add(client)
-    other = _add(client, "study", name="Study")
+    other = _add(client, "study", kind="pi_png_client", name="Study")
     before = client.get("/settings/devices").get_data(as_text=True)
     assert "data-device-mode-badge" not in before
     transport_before = re.findall(r'data-transport="([^"]+)"', before)
@@ -111,7 +114,7 @@ def test_phone_mode_report_is_visible_and_wifi_removes_bluetooth_badge(app: Flas
             client.put(
                 path,
                 headers=headers,
-                json={"mode": mode, "observed_at": timestamp, "source": "ios_ble"},
+                json={"mode": mode, "observed_at": timestamp, "source": source},
             ).status_code
             == 204
         )
@@ -128,7 +131,9 @@ def test_phone_mode_report_is_visible_and_wifi_removes_bluetooth_badge(app: Flas
         assert provenance not in detail and token not in detail
         other_detail = client.get(f"/settings/devices/{other}").get_data(as_text=True)
         assert "data-device-mode-badge" not in other_detail
-        assert "No report yet" in other_detail
+        assert "data-device-mode-observation" not in other_detail
+        assert "Phone last confirmed" not in other_detail
+        assert "No report yet" not in other_detail
 
 
 def test_invalid_phone_observation_does_not_break_device_page(app: Flask) -> None:
@@ -146,6 +151,7 @@ def test_invalid_phone_observation_does_not_break_device_page(app: Flask) -> Non
     response = client.get(f"/settings/devices/{dev}")
     assert response.status_code == 200
     assert "data-device-mode-badge" not in response.get_data(as_text=True)
+    assert "data-device-mode-observation" not in response.get_data(as_text=True)
 
 
 def test_calibration_page_renders(app: Flask) -> None:
@@ -301,7 +307,10 @@ def test_connection_chips_link_to_the_firmware_page(app: Flask, monkeypatch) -> 
     assert "Faster wakes" in chips
 
 
-def test_phone_telemetry_fills_existing_columns_without_changing_heartbeat(app: Flask) -> None:
+@pytest.mark.parametrize("source", ["ios_ble", "android_ble"])
+def test_phone_telemetry_fills_existing_columns_without_changing_heartbeat(
+    app: Flask, source: str
+) -> None:
     from app.state.device_facts import DeviceFactsStore
 
     client = app.test_client()
@@ -309,7 +318,7 @@ def test_phone_telemetry_fills_existing_columns_without_changing_heartbeat(app: 
     dev = _add(client)
     report = {
         "mode": "bluetooth",
-        "source": "ios_ble",
+        "source": source,
         "observed_at": "2026-01-02T03:04:05Z",
         "battery": {"percent": 65, "observed_at": "2026-01-02T03:04:06Z"},
         "firmware": {"version": "0.9.11", "observed_at": "2026-01-02T03:04:04Z"},

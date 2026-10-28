@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -1023,7 +1024,8 @@ def _mode_observation_view(device_id: str) -> dict[str, str] | None:
     if (
         not isinstance(observation, dict)
         or observation.get("mode") not in ("bluetooth", "wifi")
-        or observation.get("source") != "ios_ble"
+        or not isinstance(observation.get("source"), str)
+        or not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", observation["source"])
         or not isinstance(observation.get("observed_at"), str)
     ):
         return None
@@ -2279,7 +2281,11 @@ def _phone_status_readings(
     parsed = dict(cache.get("parsed") or {})
     observation = (current_app.config["DEVICE_FACTS"].get(device_id) or {}).get("mode_observation")
     labels: dict[str, str] = {}
-    if not isinstance(observation, dict) or observation.get("source") != "ios_ble":
+    if (
+        not isinstance(observation, dict)
+        or not isinstance(observation.get("source"), str)
+        or not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", observation["source"])
+    ):
         return parsed, labels
     heartbeat_at = float(cache.get("received_at") or 0)
     for field, key, parsed_key in (

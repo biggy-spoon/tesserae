@@ -75,7 +75,7 @@ ERRATA: tuple[Erratum, ...] = (
         pointer="components/schemas/Capabilities/properties/features/items/enum",
         values=("device_mode_observations", "device_status_observations"),
         since="vNext (unreleased)",
-        why="Local-first upload of confirmed iOS Bluetooth mode observations, without changing delivery gates.",
+        why="Local-first upload of confirmed Bluetooth observations from any client, without changing delivery gates.",
     ),
     Erratum(
         pointer="components/schemas/Capabilities/properties/features/items/enum",
@@ -131,13 +131,13 @@ SCHEMA_ERRATA: tuple[SchemaErratum, ...] = (
         pointer="paths",
         patch=_DEVICE_MODE["paths"],
         since="vNext (unreleased)",
-        why="Confirmed Bluetooth mode upload from the current iOS contract.",
+        why="Confirmed Bluetooth mode upload based on the iOS contract, with platform-neutral sources.",
     ),
     SchemaErratum(
         pointer="components/schemas",
         patch=_DEVICE_MODE["schemas"],
         since="vNext (unreleased)",
-        why="Mode observation request and advisory status from the current iOS contract.",
+        why="Mode observation request and advisory status with client-defined source identifiers.",
     ),
     SchemaErratum(
         pointer="components/schemas/Device/properties",

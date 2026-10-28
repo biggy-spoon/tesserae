@@ -1,4 +1,4 @@
-# Observation extension copied from the current iOS contract.
+# Observation extension based on the iOS contract, with platform-neutral sources.
 # Layered through contract_errata.py until the next published contract refresh.
 paths:
   /api/app/v1/devices/{device_id}/mode-observation:
@@ -9,8 +9,8 @@ paths:
       - Displays
       operationId: reportCompanionDeviceMode
       summary: Report a locally saved, confirmed Bluetooth mode observation
-      description: Requires device_mode_observations and device_setup:write. The iOS
-        app saves confirmed mode locally before uploading. Delayed and identical retries
+      description: Requires device_mode_observations and device_setup:write. The client
+        saves confirmed mode locally before uploading. Delayed and identical retries
         succeed without overwriting a newer observation. observed_at must include
         a timezone and be between 1970 and five minutes in the future; the server
         normalizes it to UTC seconds. This advisory record never changes firmware
@@ -55,8 +55,10 @@ schemas:
         format: date-time
       source:
         type: string
-        enum:
-        - ios_ble
+        minLength: 1
+        maxLength: 32
+        pattern: '^[a-z][a-z0-9_]{0,31}(?![\s\S])'
+        description: Client-defined lowercase identifier, such as ios_ble or android_ble.
       battery:
         $ref: '#/components/schemas/DeviceBatteryObservation'
       firmware:
@@ -80,8 +82,10 @@ schemas:
         format: date-time
       source:
         type: string
-        enum:
-        - ios_ble
+        minLength: 1
+        maxLength: 32
+        pattern: '^[a-z][a-z0-9_]{0,31}(?![\s\S])'
+        description: Original client-defined source identifier.
       received_at:
         type: string
         format: date-time
