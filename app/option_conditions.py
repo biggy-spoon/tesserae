@@ -28,7 +28,9 @@ would show.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
+from decimal import Decimal
 from typing import Any
 
 # Deeper than any real manifest; stops a cycle (a shows-if b shows-if a)
@@ -41,6 +43,24 @@ def _as_text(value: Any) -> str:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, Mapping):
+        return "[object Object]"
+    if type(value) in (int, float):
+        try:
+            number = float(value)
+        except OverflowError:
+            return str(value)
+        if math.isfinite(number):
+            if number == 0:
+                return "0"
+            shortest = repr(number)
+            if 1e-6 <= abs(number) < 1e21:
+                fixed = format(Decimal(shortest), "f")
+                return fixed.rstrip("0").rstrip(".") if "." in fixed else fixed
+            coefficient, exponent = shortest.lower().split("e")
+            if "." in coefficient:
+                coefficient = coefficient.rstrip("0").rstrip(".")
+            return f"{coefficient}e{int(exponent):+d}"
     return str(value)
 
 

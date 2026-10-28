@@ -84,6 +84,12 @@ ERRATA: tuple[Erratum, ...] = (
         why="Native Dashboard editing; iOS contract 30b32d42dec5db2a318b9dccfba2fa214d7325a6.",
     ),
     Erratum(
+        pointer="components/schemas/Capabilities/properties/features/items/enum",
+        values=("dashboard_native_controls",),
+        since="vNext (unreleased)",
+        why="Header-negotiated native conditional fields, numeric sliders, location search and color editing.",
+    ),
+    Erratum(
         pointer="components/schemas/CompanionSessionAuthorization/properties/scopes/items/enum",
         values=("dashboards:write",),
         since="vNext (unreleased)",

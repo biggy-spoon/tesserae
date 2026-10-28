@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -12,7 +13,8 @@ from app import companion_dashboard_settings as base
 from app.state.page_store import Page
 from app.widget_choices import resolve_choices
 
-_SUPPORTED = base._SUPPORTED_TYPES - {"color"}
+_LEGACY_SUPPORTED = base._SUPPORTED_TYPES - {"color", "slider", "location_search"}
+_NUMERIC = frozenset(("number", "integer", "slider"))
 
 
 class SchemaConflict(ValueError):
@@ -69,16 +71,21 @@ class Field:
     declared: bool = False
     readonly: str | None = None
     view: dict[str, Any] = field(default_factory=dict)
+    conditions: list[dict[str, Any]] = field(default_factory=list)
 
 
 class Schema:
-    def __init__(self, page: Page, registry: Any):
+    def __init__(self, page: Page, registry: Any, *, native_controls: bool = False):
+        self.native_controls = native_controls
+        self.supported = base._SUPPORTED_TYPES if native_controls else _LEGACY_SUPPORTED
         self.doc = page.model_dump(mode="json")
         self.fields: dict[str, Field] = {}
         self.inputs: list[Field] = []
         self.components: list[dict[str, Any]] = []
         self.target_defs: dict[tuple[Any, ...], tuple[Any, dict[str, Any]]] = {}
         self.definition_fingerprint: list[Any] = []
+        if native_controls:
+            self.definition_fingerprint.append(["native_controls", 1])
         self._discover(registry)
         canvas, specs = base._input_specs(page, registry)
         covered: set[tuple[Any, ...]] = set()
@@ -99,12 +106,15 @@ class Schema:
                 spec["required"] or any(d.get("required") for _, d in definitions)
             )
             record = Field("i_" + _hash(spec["name"])[:20], spec, paths, definitions, True)
-            if not spec["editable"]:
+            if not spec["editable"] or (
+                not native_controls and spec["type"] in ("slider", "location_search")
+            ):
                 record.readonly = (
                     "This declaration is unsupported, duplicated or has missing targets."
                 )
             elif any(
-                d.get("show_if") or d.get("type", "string") not in _SUPPORTED
+                (d.get("show_if") and not native_controls)
+                or d.get("type", "string") not in self.supported
                 for _, d in definitions
             ):
                 record.readonly = "This field needs the web editor."
@@ -114,6 +124,11 @@ class Schema:
                 and not all(
                     d.get("type", "string") in base._TEXT_TYPES and spec["type"] in base._TEXT_TYPES
                     for _, d in definitions
+                )
+                and not (
+                    native_controls
+                    and spec["type"] in _NUMERIC
+                    and all(d.get("type", "string") in _NUMERIC for _, d in definitions)
                 )
             ):
                 record.readonly = "The declaration and component field types differ."
@@ -135,6 +150,14 @@ class Schema:
             component["fields"] = shown
         for record in self.fields.values():
             self._describe(record)
+        if native_controls:
+            self._resolve_conditions()
+            for record in self.fields.values():
+                self._describe(record)
+                record.view.update(
+                    visibility_conditions=copy.deepcopy(record.conditions),
+                    visible=True if record.readonly else self.visible(record),
+                )
         self.revision = _hash(self.definition_fingerprint)
 
     def _discover(self, registry: Any) -> None:
@@ -188,8 +211,8 @@ class Schema:
                 )
                 if (
                     names.count(spec["name"]) > 1
-                    or spec["type"] not in _SUPPORTED
-                    or spec.get("show_if")
+                    or spec["type"] not in self.supported
+                    or (spec.get("show_if") and not self.native_controls)
                 ):
                     record.readonly = "This field needs the web editor."
                 component["_fields"].append(record)
@@ -246,6 +269,9 @@ class Schema:
         mixed = bool(values and any(not _same(values[0], v) for v in values[1:]))
         value = values[0] if values else None
         dynamic = not secret and any(d.get("choices_from") for _, d in record.definitions)
+        dynamic = dynamic or (
+            self.native_controls and not secret and spec["type"] == "location_search"
+        )
         view = {k: spec[k] for k in ("name", "label", "type", "required", "help")}
         view.update(
             field_id=record.id,
@@ -279,7 +305,139 @@ class Schema:
             ]
             if candidates:
                 view[public] = max(candidates) if public == "minimum" else min(candidates)
+        if self.native_controls:
+            units = {
+                d.get("unit", "")
+                for _, d in record.definitions
+                if isinstance(d.get("unit", ""), str)
+            }
+            if (
+                spec["type"] in _NUMERIC
+                and len(units) == 1
+                and isinstance(unit := next(iter(units)), str)
+            ):
+                view["unit"] = unit[:64]
+            if spec["type"] == "slider":
+                constraints = self._slider_constraints(record)
+                if constraints is None:
+                    record.readonly = "The numeric ranges cannot share one native slider."
+                    view.update(
+                        editable=False,
+                        can_clear=False,
+                        can_reset=False,
+                        readonly_reason=record.readonly,
+                    )
+                else:
+                    view.update(constraints)
         record.view = view
+
+    def _slider_constraints(self, record: Field) -> dict[str, float] | None:
+        from app.companion_native_controls import finite_number
+
+        definitions = [d for _, d in record.definitions] or [record.spec]
+        ranges = [
+            (
+                d.get("minimum", d.get("min", 0)),
+                d.get("maximum", d.get("max", 100)),
+                d.get("step", 1),
+            )
+            for d in definitions
+        ]
+        if any(not finite_number(v) for triple in ranges for v in triple) or any(
+            low >= high or step <= 0 for low, high, step in ranges
+        ):
+            return None
+        step = max(r[2] for r in ranges)
+        origin = next(r[0] for r in ranges if r[2] == step)
+        try:
+            if any(
+                abs(step / s - round(step / s)) > 1e-8
+                or abs((origin - low) / s - round((origin - low) / s)) > 1e-8
+                for low, _, s in ranges
+            ):
+                return None
+            minimum = origin + math.ceil((max(r[0] for r in ranges) - origin) / step - 1e-8) * step
+            maximum = origin + math.floor((min(r[1] for r in ranges) - origin) / step + 1e-8) * step
+        except (OverflowError, ValueError, ZeroDivisionError):
+            return None
+        if not finite_number(minimum) or not finite_number(maximum) or minimum >= maximum:
+            return None
+        return {"minimum": minimum, "maximum": maximum, "step": step}
+
+    def _resolve_conditions(self) -> None:
+        """Resolve widget-local names after declared inputs have claimed targets."""
+        by_path = {p: record for record in self.fields.values() for p in record.paths}
+        for record in self.fields.values():
+            conditions: list[dict[str, Any]] = []
+            for path in record.paths:
+                definition = self.target_defs.get(path, (None, record.spec))[1]
+                rule = definition.get("show_if", {})
+                if not isinstance(rule, dict):
+                    record.readonly = "The visibility rule needs the web editor."
+                    continue
+                for name, expected in rule.items():
+                    controller = by_path.get((*path[:-1], name))
+                    if (
+                        controller is None
+                        or controller.view["secret"]
+                        or controller.view["value_state"] == "mixed"
+                    ):
+                        record.readonly = "The controlling setting is unavailable, private or has different values."
+                        continue
+                    if not self._valid_expected(expected):
+                        record.readonly = "The visibility rule needs the web editor."
+                        continue
+                    condition = {"field_id": controller.id, "expected": copy.deepcopy(expected)}
+                    if condition not in conditions:
+                        conditions.append(condition)
+            # A private dependency must never expose its comparison value.
+            record.conditions = [] if record.readonly else conditions
+
+        def safe(record: Field, visiting: set[str]) -> bool:
+            if record.id in visiting:
+                return False
+            if record.readonly:
+                return False
+            return all(
+                safe(self.fields[c["field_id"]], visiting | {record.id}) for c in record.conditions
+            )
+
+        invalid = [
+            record
+            for record in self.fields.values()
+            if record.conditions and not safe(record, set())
+        ]
+        for record in invalid:
+            record.readonly = "The visibility dependencies are unavailable or form a cycle."
+            record.conditions = []
+
+    @staticmethod
+    def _valid_expected(expected: Any) -> bool:
+        if isinstance(expected, dict):
+            return (
+                set(expected) == {"not"}
+                and not isinstance(expected["not"], dict)
+                and Schema._valid_expected(expected["not"])
+            )
+        values = expected if isinstance(expected, list) else [expected]
+        return all(
+            v is None or type(v) in (str, bool, int) or (type(v) is float and math.isfinite(v))
+            for v in values
+        )
+
+    def visible(self, record: Field, visiting: frozenset[str] = frozenset()) -> bool:
+        from app.option_conditions import _matches
+
+        if record.id in visiting:
+            return False
+        for condition in record.conditions:
+            controller = self.fields[condition["field_id"]]
+            values, _ = self._values(controller)
+            if not self.visible(controller, visiting | {record.id}) or not values:
+                return False
+            if not all(_matches(value, condition["expected"]) for value in values):
+                return False
+        return True
 
     def response(self) -> dict[str, Any]:
         editable = sum(f.view["editable"] for f in self.fields.values())
@@ -302,7 +460,11 @@ class Schema:
             },
         }
 
-    def choices(self, record: Field) -> tuple[list[dict[str, Any]], bool]:
+    def choices(self, record: Field, query: str = "") -> tuple[list[dict[str, Any]], bool]:
+        if self.native_controls and record.spec["type"] == "location_search":
+            from app.companion_native_controls import location_choices
+
+            return location_choices(query)
         definitions = record.definitions or [(None, record.spec)]
         # An explicit declaration's static set is a further restriction.
         if record.declared and record.spec.get("choices"):
@@ -325,6 +487,16 @@ class Schema:
         spec = copy.deepcopy(record.spec)
         spec["editable"] = record.view["editable"]
         old, _ = self._values(record)
+        # Existing legacy color/location representations survive a no-op edit;
+        # new values must use the validated native representation.
+        from app.companion_native_controls import same_json
+
+        if (
+            spec["type"] in ("color", "location_search")
+            and old
+            and all(same_json(value, v) for v in old)
+        ):
+            return
         if (
             spec["type"] == "multiselect"
             and isinstance(value, list)
@@ -352,14 +524,15 @@ class Schema:
             spec["choices"] = rows + [{"value": v} for v in retained]
         spec.setdefault("targets", [])
         try:
-            base._validate_input(spec, value)
+            base._validate_input(spec, value, previous_values=old)
         except base.InvalidSettings as exc:
             raise base.InvalidSettings(error, str(exc)) from None
         if type(value) in (int, float):
             for _, definition in record.definitions:
-                minimum = definition.get("minimum", definition.get("min"))
-                maximum = definition.get("maximum", definition.get("max"))
-                step = definition.get("step")
+                slider = definition.get("type") == "slider"
+                minimum = definition.get("minimum", definition.get("min", 0 if slider else None))
+                maximum = definition.get("maximum", definition.get("max", 100 if slider else None))
+                step = definition.get("step", 1 if slider else None)
                 if (minimum is not None and value < minimum) or (
                     maximum is not None and value > maximum
                 ):
@@ -447,6 +620,12 @@ class Schema:
                     container[key] = value or ""
                 else:
                     container[key] = copy.deepcopy(value)
+        if self.native_controls:
+            for record, _, _, error in operations:
+                if not self.visible(record):
+                    raise base.InvalidSettings(
+                        error, "This setting is hidden by the selected options."
+                    )
         # Required aliases are enforced only when their targets were affected.
         for record in self.fields.values():
             if record.spec["required"] and any(

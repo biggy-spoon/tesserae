@@ -153,6 +153,7 @@ FEATURES = (
     "dashboard_push",
     "dashboard_settings",
     "dashboard_component_settings",
+    "dashboard_native_controls",
     "image_push",
     "image_url_push",
     "jobs",
@@ -1276,6 +1277,7 @@ def get_dashboard_settings(dashboard_id: str) -> Any:
             can_edit="dashboards:write" in g.companion.scopes,
             options=settings_api.appearance_options(),
             registry=current_app.config.get("PLUGIN_REGISTRY"),
+            native_controls=request.headers.get("X-Tesserae-Dashboard-Controls") == "1",
         )
     )
 
@@ -1315,6 +1317,7 @@ def patch_dashboard_settings(dashboard_id: str) -> Any:
             options=options,
             device_ids={device.id for device in _devices().all()},
             registry=registry,
+            native_controls=request.headers.get("X-Tesserae-Dashboard-Controls") == "1",
         )
         updated = store.update_if_revision(dashboard_id, body["revision"], lambda _page: patched)
     except PageRevisionConflict:
@@ -1333,7 +1336,13 @@ def patch_dashboard_settings(dashboard_id: str) -> Any:
     current_app.config.get("PREVIEW_CACHE", {}).pop(dashboard_id, None)
     # Companion's content-keyed token changes with the saved page. Never push.
     return jsonify(
-        settings_api.response(updated, can_edit=True, options=options, registry=registry)
+        settings_api.response(
+            updated,
+            can_edit=True,
+            options=options,
+            registry=registry,
+            native_controls=request.headers.get("X-Tesserae-Dashboard-Controls") == "1",
+        )
     )
 
 
@@ -1345,7 +1354,11 @@ def dashboard_settings_choices(dashboard_id: str, field_id: str) -> Any:
     page = _pages().get(dashboard_id)
     if page is None:
         return _error("not_found", "No dashboard with that id.", 404)
-    schema = Schema(page, current_app.config.get("PLUGIN_REGISTRY"))
+    schema = Schema(
+        page,
+        current_app.config.get("PLUGIN_REGISTRY"),
+        native_controls=request.headers.get("X-Tesserae-Dashboard-Controls") == "1",
+    )
     record = schema.fields.get(field_id)
     if record is None or record.view["secret"]:
         return _error("not_found", "No selectable field with that id.", 404)
@@ -1356,9 +1369,10 @@ def dashboard_settings_choices(dashboard_id: str, field_id: str) -> Any:
         offset = max(0, int(request.args.get("offset", 0)))
     except ValueError:
         return _error("invalid_request", "Use whole numbers for limit and offset.", 400)
-    choices, ready = schema.choices(record)
-    query = request.args.get("q", "").casefold()
-    if query:
+    query = request.args.get("q", "")
+    choices, ready = schema.choices(record, query)
+    query = query.casefold()
+    if query and record.spec["type"] != "location_search":
         choices = [
             c
             for c in choices

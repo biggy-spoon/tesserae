@@ -127,6 +127,7 @@ def test_capabilities_probe_is_unauthenticated_and_valid(app: Flask) -> None:
         "dashboard_push",
         "dashboard_settings",
         "dashboard_component_settings",
+        "dashboard_native_controls",
         "image_push",
         "image_url_push",
         "jobs",
