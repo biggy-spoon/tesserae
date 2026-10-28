@@ -6,6 +6,14 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Widgets are told which placement they are rendering for: `ctx.placement_id`
+  names the page, the cell and the device. A widget that declares
+  `render.per_placement` in its manifest also gets its own fetch for each
+  placement instead of one shared by identical cells, so a rotation keeps a
+  separate turn on a big panel and a small one. Other widgets are unchanged.
+
 ## [0.486.0], 2026-10-28
 
 ### Added
