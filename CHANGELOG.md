@@ -6,6 +6,8 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.488.0], 2026-10-28
+
 ### Added
 
 - Each display gets *Next* and *Previous* buttons in Home Assistant. They
