@@ -37,7 +37,9 @@ via ``via_device``):
   rotation) and, when the kind carries one, ``Wake interval``.
 * **switch** ``Quiet hours override`` and **binary_sensors** ``In quiet
   hours``, ``Online``, ``Low battery``.
-* **button** ``Refresh now``, **event** ``Input`` (physical buttons and
+* **button** ``Refresh now``, **buttons** ``Next`` / ``Previous`` (step
+  whatever the display follows right now, for this display only, see
+  ``ButtonService.step``), **event** ``Input`` (physical buttons and
   touch gestures), **notify** (text onto this display) and, once the
   device advertises OTA, an **update** entity for its firmware.
 * lazily, where the heartbeat provides them: **Battery**, **Signal**,
@@ -74,7 +76,7 @@ from typing import Any
 
 from app import background_loops
 from app.device_loader import DeviceRegistry, takes_input
-from app.push import PushManager, PushResult
+from app.push import DELIVERED_STATUSES, PushManager, PushResult
 from app.state.page_store import PageStore
 from app.transport import MqttTransport
 
@@ -201,6 +203,9 @@ class HaHooks:
     * ``notify_fn(device_id | None, message) -> error``: render text onto one
       display (``None`` = every display).
     * ``expected_interval_fn(device_id) -> seconds`` between heartbeats.
+    * ``step_device_fn(device_id, delta) -> error``: step what the display
+      follows one page forward (``delta > 0``) or back, as a physical next
+      / previous press would (``ButtonService.step``).
     """
 
     deck_store: Any = None
@@ -219,6 +224,7 @@ class HaHooks:
     firmware_install_fn: Callable[[str], str | None] | None = None
     notify_fn: Callable[[str | None, str], str | None] | None = None
     expected_interval_fn: Callable[[str], int | None] | None = None
+    step_device_fn: Callable[[str, int], str | None] | None = None
 
 
 def _switch_on(section: dict[str, Any], key: str) -> bool:
@@ -670,6 +676,28 @@ def build_device_configs(
             ),
         ),
         (
+            _discovery_topic("button", f"dev_{device_id}_next"),
+            _entity(
+                f"dev_{device_id}_next",
+                "Next",
+                dev,
+                command_topic=_dev_cmd(device_id, "action"),
+                payload_press="next",
+                icon="mdi:skip-next",
+            ),
+        ),
+        (
+            _discovery_topic("button", f"dev_{device_id}_prev"),
+            _entity(
+                f"dev_{device_id}_prev",
+                "Previous",
+                dev,
+                command_topic=_dev_cmd(device_id, "action"),
+                payload_press="prev",
+                icon="mdi:skip-previous",
+            ),
+        ),
+        (
             _discovery_topic("event", f"dev_{device_id}_input"),
             _entity(
                 f"dev_{device_id}_input",
@@ -904,7 +932,8 @@ class HomeAssistantDiscovery:
     def _lineup_for_device(self, device_id: str) -> Any | None:
         """The lineup a display is following: the one it's navigating (nav
         store) when that deck still binds it, else the first enabled deck
-        bound to it."""
+        bound to it. Keep in step with ``ButtonService.following_deck``,
+        which applies the same rule to choose what Next / Previous step."""
         decks = self._decks()
         nav = self._hooks.deck_nav_store
         if nav is not None:
@@ -1439,7 +1468,7 @@ class HomeAssistantDiscovery:
                     respect_quiet_hours=False,
                     source="home_assistant",
                 )
-                if result.status == "failed":
+                if result.status not in DELIVERED_STATUSES:
                     continue
             if nav is not None:
                 with contextlib.suppress(Exception):
@@ -1474,8 +1503,16 @@ class HomeAssistantDiscovery:
                 if on is not None:
                     self._set_device_quiet_override(device, on)
             elif leaf == "action":
-                if text == "refresh":
+                # Exact press payloads only: undecodable bytes don't get
+                # stripped down into a valid action.
+                try:
+                    action = payload.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    action = ""
+                if action == "refresh":
                     self._refresh_device(device)
+                elif action in ("next", "prev"):
+                    self._step_device(device, 1 if action == "next" else -1)
             elif leaf == "wake_interval":
                 self._set_wake_interval(device, text)
             elif leaf == "firmware_install":
@@ -1599,6 +1636,29 @@ class HomeAssistantDiscovery:
         except Exception:
             self._publish_str(STATE_TOPIC_BUSY, "0", retain=True)
             raise
+
+    def _step_device(self, device: Any, delta: int) -> None:
+        """Next / Previous button: step what this display follows right now,
+        one page, for this display only, through the physical-button path
+        (``ButtonService.step``). A failure lands on Last error."""
+        fn = self._hooks.step_device_fn
+        if fn is None:
+            return
+        device_id = str(device.id)
+        logger.info(
+            "HA discovery: %s on display %r", "next" if delta > 0 else "previous", device_id
+        )
+        self._publish_str(STATE_TOPIC_BUSY, "1", retain=True)
+        try:
+            err = fn(device_id, delta)
+        except Exception:
+            logger.exception("HA discovery: step failed on display %r", device_id)
+            err = f"{device.display_name}: step failed"
+        finally:
+            self._publish_str(STATE_TOPIC_BUSY, "0", retain=True)
+        if err:
+            self._publish_str(STATE_TOPIC_LAST_ERROR, err[:240], retain=True)
+        self._publish_device_runtime(self._device(device_id) or device)
 
     def _set_wake_interval(self, device: Any, text: str) -> None:
         fn = self._hooks.set_device_config_fn
@@ -1833,7 +1893,7 @@ class HomeAssistantDiscovery:
             if lineups_on
             else set()
         )
-        skip_leaves = self._device_skip_leaves(lineups_on) & {"lineup"}
+        skip_leaves = self._device_skip_leaves(lineups_on) & {"lineup", "next", "prev"}
         to_blank: set[str] = set()
 
         def on_config(topic: str, payload: bytes) -> None:
@@ -1868,8 +1928,8 @@ class HomeAssistantDiscovery:
                 return
             if isinstance(primary, str) and primary.startswith("tesserae_dev_"):
                 device_id = primary[len("tesserae_dev_") :]
-                # A display that's gone, or its Lineup select when this
-                # session won't publish it.
+                # A display that's gone, or one of its entities (Lineup
+                # select, Next / Previous) this session won't publish.
                 unpublished = (
                     obj is not None and obj.removeprefix(f"dev_{device_id}_") in skip_leaves
                 )
@@ -2008,6 +2068,8 @@ class HomeAssistantDiscovery:
             skip.add("notify")
         if self._hooks.button_service is None:
             skip.add("input")
+        if self._hooks.step_device_fn is None:
+            skip.update(("next", "prev"))
         return skip
 
     def _blank_removed_device_configs(self, removed: set[str]) -> None:

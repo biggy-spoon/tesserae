@@ -6,6 +6,25 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Each display gets *Next* and *Previous* buttons in Home Assistant. They
+  step whatever that display is showing right now, on that display only,
+  the way its own left and right buttons do. On a display with several
+  lineups bound (one per time slot, say), they step the lineup whose page
+  is on the glass. A one-page lineup, or a display that follows nothing,
+  is left alone. They work while automation is paused and during quiet
+  hours, like other manual sends.
+
+### Fixed
+
+- A lineup's position is only recorded once its page has reached the
+  display. A button press, a timer step or a return to the home page that
+  failed, or that a newer send replaced, no longer leaves the position
+  naming a page the display never showed. Daily and interval lineup fires
+  now record their position too, so Next and Previous continue from the
+  page they put up.
+
 ## [0.487.0], 2026-10-28
 
 ### Added
