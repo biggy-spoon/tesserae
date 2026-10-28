@@ -3571,7 +3571,7 @@ select.dx-input:hover {
   --dx-danger-border: #e7b6b0;
   --dx-danger-hover: #fbeeec;
   --dx-save-bar: #23231f;
-  --dx-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --dx-mono: "Tesserae UI JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 :root[data-theme="dark"] .dx-devices-area,
 :root[data-theme="dark"] .dx-devpage,

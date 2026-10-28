@@ -24,6 +24,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {% endif %}
   <title>{{ server_mark.tab_prefix(_si) }}{% block title %}Tesserae{% endblock %}</title>
+  {% include "_ui_font_preloads.html" %}
   <link rel="icon" type="image/svg+xml" href="{{ server_mark.favicon_href(_si, url_for('static', filename='brand/favicon.svg')) }}">
   <link rel="alternate icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='brand/favicon-32.png') }}">
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='brand/icon-192.png') }}">

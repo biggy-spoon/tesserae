@@ -130,6 +130,17 @@ Home Assistant.
   (`static/pages/*.js` → `static/dist/`)
 - waitress as the production WSGI server
 
+## UI font loading
+
+The admin shell and canvas editor chrome use `Tesserae UI …` font families
+so dashboard content can load the original families independently. Both
+shells preload the active design's common fonts before their stylesheets.
+UI faces use `font-display: optional`: if a font is late, visible text
+keeps its system fallback for that page view; later views can use the
+cached font. Bundled `fonts_core` WOFF assets are cached for one day,
+with revalidation in dev mode. Icons reserve their glyph width, and Paper
+pages start at their final position without a page-wide entry slide.
+
 ## Repo layout
 
 ```

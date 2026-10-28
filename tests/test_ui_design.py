@@ -3,6 +3,7 @@ route it posts to, and what the base template renders for each setting."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,34 @@ def test_paper_by_default_with_switch_offered(app: Flask) -> None:
     assert '<span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 256 256"' in body
     assert 'class="brand-edge"' in body
     assert '<span class="brand-tag">Server</span>' in body
+
+
+@pytest.mark.parametrize("design", [None, "paper", "classic"])
+def test_preloads_active_ui_fonts_with_ingress_prefix(app: Flask, design: str | None) -> None:
+    if design is not None:
+        app.config["SETTINGS_STORE"].update_section("app", {"ui_design": design})
+    prefix = "/api/hassio_ingress/test"
+    response = app.test_client().get("/send", environ_overrides={"SCRIPT_NAME": prefix})
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    preloads = re.findall(r'<link rel="preload" href="([^"]+)" as="font"', body)
+    files = ["inter/700.woff2"]
+    if design == "classic":
+        files += ["inter/400.woff2", "inter/800.woff2", "jetbrains-mono/400.woff2"]
+    else:
+        files += [
+            "archivo/400.woff2",
+            "archivo/700.woff2",
+            "archivo/800.woff2",
+            "martian_mono/400.woff2",
+        ]
+    assert preloads == [f"{prefix}/plugins/fonts_core/static/{file}" for file in files]
+    assert body.index('rel="preload"') < body.index('rel="stylesheet"')
+    assert all(
+        'type="font/woff2" crossorigin' in line
+        for line in body.splitlines()
+        if 'rel="preload"' in line
+    )
 
 
 def test_switch_on_then_off_returns_to_the_page(app: Flask) -> None:
