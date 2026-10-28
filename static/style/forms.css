@@ -2399,7 +2399,7 @@ input[type="range"].slider:focus::-moz-range-thumb {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--t-muted, #6b7280);
-  font-family: var(--t-font-mono, ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace);
+  font-family: var(--t-font-mono, ui-monospace, "Tesserae UI JetBrains Mono", "SF Mono", Menlo, monospace);
   letter-spacing: 0.01em;
 }
 

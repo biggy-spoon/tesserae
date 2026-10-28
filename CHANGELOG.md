@@ -13,6 +13,19 @@ All notable changes to Tesserae are recorded here. Format loosely follows
   optional native-controls header preserves older clients' read-only behavior;
   hidden saved values, opaque field scopes and revision checks remain intact.
 
+## [0.487.1], 2026-10-28
+
+### Fixed
+
+- Interface text no longer changes typeface and apparent size after a page
+  appears. Common UI fonts are preloaded, bundled fonts stay cached between
+  pages, and a late font keeps the initial fallback for that page view.
+  UI font aliases keep this policy independent of dashboard content fonts.
+- Paper pages start at their final position instead of sliding all text
+  through fractional pixels on each navigation.
+- Icons reserve their final width while their font loads, keeping nearby
+  navigation, button and display labels in place.
+
 ## [0.487.0], 2026-10-28
 
 ### Added

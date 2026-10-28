@@ -641,7 +641,19 @@ def register_routes(app: Flask, registry: PluginRegistry) -> None:
             abort(404)
         if asset not in _ALLOWED_ASSETS and not asset.startswith(_ALLOWED_ASSET_PREFIXES):
             abort(404)
-        return send_from_directory(plugin.path, asset)
+        # Bundled fonts use this endpoint, not Flask's /static endpoint.
+        # Give their unversioned CSS URLs the same one-day cache lifetime
+        # as unversioned icon fonts; revalidation on every navigation made
+        # the entire UI repeatedly fall back and then change typeface.
+        max_age = None
+        if (
+            plugin_id == "fonts_core"
+            and asset.startswith("static/")
+            and asset.endswith((".woff", ".woff2"))
+            and not current_app.config.get("DEV_MODE")
+        ):
+            max_age = 86400
+        return send_from_directory(plugin.path, asset, max_age=max_age)
 
     app.register_blueprint(bp, url_prefix="/plugins")
 
