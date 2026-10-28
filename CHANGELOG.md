@@ -6,6 +6,8 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.488.1], 2026-10-28
+
 ### Added
 
 - Companion supports conditional Dashboard fields, sliders with exact numeric
