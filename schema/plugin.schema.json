@@ -215,7 +215,11 @@
       "properties": {
         "dither": { "enum": ["none", "floyd-steinberg", "ordered"] },
         "full_bleed": { "type": "boolean" },
-        "needs_network": { "type": "boolean" }
+        "needs_network": { "type": "boolean" },
+        "per_placement": {
+          "type": "boolean",
+          "description": "The widget's fetch() output belongs to one placement (a page, a cell and a device), for example a rotation that keeps its own turn or a payload fitted to the cell. The host passes ctx.placement_id to every widget; this flag also keeps the composer from sharing one fetch, or one last-good fallback, between placements that otherwise have the same options."
+        }
       }
     },
     "updates": {

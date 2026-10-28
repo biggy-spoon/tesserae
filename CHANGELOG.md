@@ -8,6 +8,12 @@ All notable changes to Tesserae are recorded here. Format loosely follows
 
 ### Added
 
+- Widgets are told which placement they are rendering for: `ctx.placement_id`
+  names the page, the cell and the device. A widget that declares
+  `render.per_placement` in its manifest also gets its own fetch for each
+  placement instead of one shared by identical cells, so a rotation keeps a
+  separate turn on a big panel and a small one. Other widgets are unchanged.
+
 - The push pipeline can now be asked whether a render is under way for a
   device (`PushManager.render_in_progress`). It is true from the moment a
   push for the device starts, through the settle wait, the queue for the
